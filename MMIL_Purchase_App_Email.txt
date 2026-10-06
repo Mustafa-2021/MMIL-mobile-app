@@ -1,0 +1,30 @@
+Subject: Purchase Task Management App: Now Live for the Purchase Team
+
+Dear Sir,
+
+As per your requirement, I have developed a mobile application, "MMIL Purchase", to manage and track the purchase team's day-to-day tasks. The application is now fully live and ready for the purchase team to use.
+
+Key highlights:
+
+• Secure login with mobile number and OTP
+• Task assignment with priority, category and due date (quotations, PO follow-ups, vendor visits, payment follow-ups)
+• Real-time status tracking (To Do / In Progress / Done), with overdue tasks highlighted
+• Due-date extension requests with a complete history (R1, R2, ...) for accountability
+• Updates and comments on each task between the admin and the team member
+• File attachments (PDF, Excel, Word) up to 10 MB per task
+• Instant phone notifications for new tasks and updates, plus a daily 9:00 AM reminder of pending tasks
+• Reports with Excel export for review and analysis
+
+Cost:
+
+• About Rs. 50–150 per month, mainly for OTP SMS. There are no licence or subscription fees.
+
+A detailed project summary, including a management approval section, is attached for your reference.
+
+Please feel free to reach out to me if you have any questions about the application.
+
+Thanks & Regards,
+[Your Name]
+[Designation]
+[Department] | MMIL
+[Mobile Number]

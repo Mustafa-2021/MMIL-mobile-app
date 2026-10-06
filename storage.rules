@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Paste into Firebase Console -> Storage -> Rules.
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Task attachments: tasks/{taskId}/{fileName}
+    match /tasks/{taskId}/{fileName} {
+      allow read, delete: if request.auth != null;
+      // Max 10 MB, enforced on the server as well as in the app.
+      allow create: if request.auth != null
+                    && request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    // Everything else is closed.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
