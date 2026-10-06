@@ -26,6 +26,9 @@ an admin/member workflow) and is being extended in phases:
 
 - `android/app/google-services.json` must be the one downloaded for the `com.mmil.app` package
   (Project settings → Your apps → Android app `com.mmil.app`).
+- `ios/MMILPurchase/GoogleService-Info.plist` is the config for the iOS app `com.mmil.app`. On the
+  Mac: `cd ios && pod install`, then open `MMILPurchase.xcworkspace`, set the signing team, and add
+  the Push Notifications capability; upload an APNs key under Project settings → Cloud Messaging.
 - **Important:** open the Firebase console → Authentication → Sign-in method → Phone, and enable it.
 - **Important:** add these SHA certificate fingerprints under Project settings → your Android app,
   so Phone Auth can verify silently without falling back to a reCAPTCHA web view:
