@@ -8,8 +8,10 @@ const { getMessaging } = require('firebase-admin/messaging');
 initializeApp();
 const db = getFirestore();
 
-// Same region as the Firestore database (Mumbai).
-setGlobalOptions({ region: 'asia-south1', maxInstances: 5 });
+// Same region as the Firestore database (Mumbai). Callable functions must be publicly invokable
+// (they check Firebase Auth themselves); the Workspace org's "Domain restricted sharing" policy
+// is overridden for this project to allow that.
+setGlobalOptions({ region: 'asia-south1', maxInstances: 5, invoker: 'public' });
 
 // Employee ID + DOB login and super-admin management (callable functions).
 Object.assign(exports, require('./employees'));
