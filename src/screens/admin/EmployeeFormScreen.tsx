@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 import { ActivityIndicator, Button, HelperText, Text, TextInput } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/theme';
 import { subscribeEmployee, upsertEmployee } from '../../services/admin';
 import { RootStackParamList } from '../../types';
+import DobCalendar from '../../components/DobCalendar';
 import { dobInputToIso, maskDobInput } from '../../utils/helpers';
 
 type Route = RouteProp<RootStackParamList, 'EmployeeForm'>;
@@ -20,6 +21,7 @@ export default function EmployeeFormScreen() {
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('');
   const [dobText, setDobText] = useState('');
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -109,6 +111,26 @@ export default function EmployeeFormScreen() {
           value={dobText}
           onChangeText={t => setDobText(maskDobInput(t))}
           style={styles.input}
+          right={
+            <TextInput.Icon
+              icon="calendar-month-outline"
+              onPress={() => {
+                Keyboard.dismiss();
+                setCalendarOpen(true);
+              }}
+              accessibilityLabel="Open calendar"
+            />
+          }
+        />
+        <DobCalendar
+          visible={calendarOpen}
+          value={dobInputToIso(dobText)}
+          onDismiss={() => setCalendarOpen(false)}
+          onSelect={iso => {
+            const [y, m, d] = iso.split('-');
+            setDobText(`${d}/${m}/${y}`);
+            setCalendarOpen(false);
+          }}
         />
         {editingId && (
           <Text style={styles.hint}>

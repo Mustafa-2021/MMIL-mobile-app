@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,6 +11,7 @@ import { Button, HelperText, Text, TextInput } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
 import { ConfirmationResult, getAuth, onAuthStateChanged } from '@react-native-firebase/auth';
 import { colors } from '../theme/theme';
+import DobCalendar from '../components/DobCalendar';
 import {
   completeEmployeeLogin,
   confirmOtp,
@@ -29,6 +31,7 @@ export default function LoginScreen() {
   const [stage, setStage] = useState<Stage>('employee');
   const [employeeId, setEmployeeId] = useState('');
   const [dobText, setDobText] = useState('');
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [employeeName, setEmployeeName] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
@@ -142,10 +145,11 @@ export default function LoginScreen() {
             <TextInput
               mode="outlined"
               label="Employee ID"
-              autoCapitalize="characters"
+              keyboardType="number-pad"
               autoCorrect={false}
+              maxLength={10}
               value={employeeId}
-              onChangeText={setEmployeeId}
+              onChangeText={t => setEmployeeId(t.replace(/\D/g, ''))}
               style={styles.input}
             />
             <TextInput
@@ -157,6 +161,26 @@ export default function LoginScreen() {
               value={dobText}
               onChangeText={t => setDobText(maskDobInput(t))}
               style={styles.input}
+              right={
+                <TextInput.Icon
+                  icon="calendar-month-outline"
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setCalendarOpen(true);
+                  }}
+                  accessibilityLabel="Open calendar"
+                />
+              }
+            />
+            <DobCalendar
+              visible={calendarOpen}
+              value={dob}
+              onDismiss={() => setCalendarOpen(false)}
+              onSelect={iso => {
+                const [y, m, d] = iso.split('-');
+                setDobText(`${d}/${m}/${y}`);
+                setCalendarOpen(false);
+              }}
             />
             <ErrorText message={error} />
             <Button
