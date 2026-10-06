@@ -84,3 +84,8 @@ firebase-debug.log
 # Firebase config (contains API keys; obtain from Firebase console)
 google-services.json
 GoogleService-Info.plist
+
+# Employee HR data (personal data: never commit)
+*.xlsx
+*.xls
+*.csv

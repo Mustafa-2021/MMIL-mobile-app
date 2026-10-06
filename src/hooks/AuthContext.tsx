@@ -5,9 +5,10 @@ import { User } from '@react-native-firebase/auth';
 
 interface AuthContextValue {
   initializing: boolean;
+  /** Set only once the employee's profile has loaded. */
   firebaseUser: User | null;
+  /** Live: updates when the super admin changes the employee's team, role or status. */
   profile: AppUser | null;
-  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);

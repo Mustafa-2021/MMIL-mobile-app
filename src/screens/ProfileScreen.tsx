@@ -6,10 +6,13 @@ import { colors } from '../theme/theme';
 import { useAuthContext } from '../hooks/AuthContext';
 import { signOutUser } from '../services/auth';
 import { getTeam } from '../services/team';
-import { Team } from '../types';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList, Team } from '../types';
 import { formatDateTime } from '../utils/helpers';
 
 export default function ProfileScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { profile } = useAuthContext();
   const [team, setTeam] = useState<Team | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -57,15 +60,35 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.name}>{profile.name}</Text>
         <View style={styles.roleChip}>
-          <Text style={styles.roleText}>{profile.role === 'admin' ? 'Admin' : 'Member'}</Text>
+          <Text style={styles.roleText}>
+            {profile.superAdmin
+              ? 'Super Admin'
+              : !profile.teamId
+              ? 'Employee'
+              : profile.role === 'admin'
+              ? 'Admin'
+              : 'Member'}
+          </Text>
         </View>
       </View>
 
       <View style={styles.card}>
+        <Row label="Employee ID" value={profile.employeeId} />
+        <Row label="Department" value={profile.department || '—'} />
         <Row label="Phone" value={profile.phone || '—'} />
         <Row label="Team" value={team?.name ?? '—'} />
         <Row label="Member since" value={formatDateTime(profile.createdAt)} last />
       </View>
+
+      {profile.superAdmin && (
+        <Button
+          mode="contained"
+          icon="shield-account-outline"
+          style={styles.superAdmin}
+          onPress={() => navigation.navigate('SuperAdmin')}>
+          Super Admin
+        </Button>
+      )}
 
       <Button
         mode="outlined"
@@ -160,8 +183,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginLeft: 12,
   },
+  superAdmin: {
+    marginTop: 24,
+    borderRadius: 10,
+  },
   logout: {
-    marginTop: 32,
+    marginTop: 16,
     borderColor: colors.high,
   },
 });

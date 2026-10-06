@@ -1,25 +1,31 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ConfirmationResult,
   getAuth,
+  signInWithCustomToken,
   signInWithPhoneNumber,
   signOut,
   UserCredential,
 } from '@react-native-firebase/auth';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  limit,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from '@react-native-firebase/firestore';
-import { AppUser, Team, UserRole } from '../types';
-import { generateInviteCode } from '../utils/helpers';
+import { doc, getFirestore, onSnapshot } from '@react-native-firebase/firestore';
+import { AppUser } from '../types';
+import { callFunction } from './functions';
 import { clearFcmToken } from './notifications';
+
+// The session this phone was given at login; if the profile's sessionVersion moves past it,
+// the employee logged in on another phone (or was logged out by the admin).
+const SESSION_KEY = 'mmil.sessionVersion';
+
+/** Employees sign in as emp_{employeeId}; any other signed-in user is a half-finished login. */
+export function isEmployeeUid(uid: string | undefined | null): boolean {
+  return !!uid && uid.startsWith('emp_');
+}
+
+/** Step 1: check employee ID + date of birth (YYYY-MM-DD). Returns the employee's name. */
+export async function verifyEmployee(employeeId: string, dob: string): Promise<string> {
+  const { name } = await callFunction<{ name: string }>('verifyEmployee', { employeeId, dob });
+  return name;
+}
 
 export async function sendOtp(phoneNumber: string): Promise<ConfirmationResult> {
   return signInWithPhoneNumber(getAuth(), phoneNumber);
@@ -32,75 +38,47 @@ export async function confirmOtp(
   return confirmation.confirm(code);
 }
 
-export async function getUserProfile(uid: string): Promise<AppUser | null> {
-  const snap = await getDoc(doc(getFirestore(), 'users', uid));
-  if (!snap.exists()) return null;
-  return { uid, ...(snap.data() as Omit<AppUser, 'uid'>) };
-}
-
-export async function createUserProfile(
-  uid: string,
-  name: string,
-  phone: string,
-): Promise<AppUser> {
-  const profile: Omit<AppUser, 'uid'> = {
-    name,
-    phone,
-    role: 'member',
-    teamId: null,
-    fcmToken: null,
-    createdAt: Date.now(),
-  };
-  await setDoc(doc(getFirestore(), 'users', uid), profile);
-  return { uid, ...profile };
-}
-
-export async function createTeam(
-  uid: string,
-  teamName: string,
-): Promise<{ team: Team; role: UserRole }> {
-  const db = getFirestore();
-  const inviteCode = generateInviteCode();
-  const teamRef = doc(collection(db, 'teams'));
-  const team: Omit<Team, 'id'> = {
-    name: teamName,
-    inviteCode,
-    adminUid: uid,
-    createdAt: Date.now(),
-  };
-  await setDoc(teamRef, team);
-  await updateDoc(doc(db, 'users', uid), {
-    role: 'admin',
-    teamId: teamRef.id,
-  });
-  return { team: { id: teamRef.id, ...team }, role: 'admin' };
-}
-
-export async function joinTeam(
-  uid: string,
-  inviteCode: string,
-): Promise<Team> {
-  const db = getFirestore();
-  const snapshot = await getDocs(
-    query(
-      collection(db, 'teams'),
-      where('inviteCode', '==', inviteCode.trim()),
-      limit(1),
-    ),
-  );
-  if (snapshot.empty) {
-    throw new Error('Invalid invite code. Please check and try again.');
+/** Step 3, while signed in with the verified phone number: switch to the employee account. */
+export async function completeEmployeeLogin(employeeId: string, dob: string): Promise<void> {
+  try {
+    const { token, sessionVersion } = await callFunction<{ token: string; sessionVersion: number }>(
+      'linkEmployee',
+      { employeeId, dob },
+    );
+    // Saved before signing in, so the profile listener never sees a mismatch for this login.
+    await AsyncStorage.setItem(SESSION_KEY, String(sessionVersion));
+    await signInWithCustomToken(getAuth(), token);
+  } catch (e) {
+    await signOut(getAuth()).catch(() => {});
+    throw e;
   }
-  const teamDoc = snapshot.docs[0];
-  await updateDoc(doc(db, 'users', uid), {
-    role: 'member',
-    teamId: teamDoc.id,
-  });
-  return { id: teamDoc.id, ...(teamDoc.data() as Omit<Team, 'id'>) };
+}
+
+export async function getStoredSessionVersion(): Promise<number | null> {
+  try {
+    const v = await AsyncStorage.getItem(SESSION_KEY);
+    return v == null ? null : Number(v);
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeProfile(
+  uid: string,
+  onChange: (profile: AppUser | null) => void,
+  onError?: (e: Error) => void,
+) {
+  return onSnapshot(
+    doc(getFirestore(), 'users', uid),
+    snap =>
+      onChange(snap.exists() ? { uid, ...(snap.data() as Omit<AppUser, 'uid'>) } : null),
+    err => onError?.(err as unknown as Error),
+  );
 }
 
 export async function signOutUser(): Promise<void> {
   const uid = getAuth().currentUser?.uid;
-  if (uid) await clearFcmToken(uid);
+  if (uid && isEmployeeUid(uid)) await clearFcmToken(uid);
+  await AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
   await signOut(getAuth());
 }

@@ -1,64 +1,120 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
-  View,
 } from 'react-native';
-import { Button, Text, TextInput } from 'react-native-paper';
+import { Button, HelperText, Text, TextInput } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
-import { ConfirmationResult } from '@react-native-firebase/auth';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ConfirmationResult, getAuth, onAuthStateChanged } from '@react-native-firebase/auth';
 import { colors } from '../theme/theme';
-import { confirmOtp, sendOtp } from '../services/auth';
-import { RootStackParamList } from '../types';
-import { isValidPhone, toE164 } from '../utils/helpers';
+import {
+  completeEmployeeLogin,
+  confirmOtp,
+  isEmployeeUid,
+  sendOtp,
+  verifyEmployee,
+} from '../services/auth';
+import { dobInputToIso, isValidPhone, maskDobInput, toE164 } from '../utils/helpers';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'Login'>;
-type LoginRoute = RouteProp<RootStackParamList, 'Login'>;
+type Stage = 'employee' | 'phone' | 'otp';
 
+/**
+ * Employee login: (1) employee ID + date of birth, checked against the HR list;
+ * (2) mobile number + OTP; (3) the verified number is linked to the employee account.
+ */
 export default function LoginScreen() {
-  const navigation = useNavigation<Nav>();
-  const { mode } = useRoute<LoginRoute>().params;
+  const [stage, setStage] = useState<Stage>('employee');
+  const [employeeId, setEmployeeId] = useState('');
+  const [dobText, setDobText] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
-  const [stage, setStage] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const linkingRef = useRef(false);
+  // Latest values for the auth listener, which is registered once.
+  const credsRef = useRef({ employeeId: '', dob: '' });
 
-  const fullPhone = toE164(phone);
+  const dob = dobInputToIso(dobText);
+
+  const resetToStart = (message?: string) => {
+    setStage('employee');
+    setOtp('');
+    confirmationRef.current = null;
+    if (message) setError(message);
+  };
+
+  const linkAccount = async () => {
+    if (linkingRef.current) return;
+    linkingRef.current = true;
+    setLoading(true);
+    try {
+      // On success the auth listener in useAuth takes over and opens the app.
+      await completeEmployeeLogin(credsRef.current.employeeId, credsRef.current.dob);
+    } catch (e: any) {
+      resetToStart(e?.message);
+      setLoading(false);
+    } finally {
+      linkingRef.current = false;
+    }
+  };
+
+  // Android can verify the SMS by itself and sign in without the OTP being typed.
+  useEffect(() => {
+    return onAuthStateChanged(getAuth(), user => {
+      if (user && !isEmployeeUid(user.uid) && confirmationRef.current) linkAccount();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleVerifyEmployee = async () => {
+    setError('');
+    const id = employeeId.trim();
+    if (!id) return setError('Enter your employee ID.');
+    if (!dob) return setError('Enter your date of birth as DD/MM/YYYY.');
+    setLoading(true);
+    try {
+      const name = await verifyEmployee(id, dob);
+      credsRef.current = { employeeId: id, dob };
+      setEmployeeName(name);
+      setStage('phone');
+    } catch (e: any) {
+      setError(e?.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSendOtp = async () => {
-    if (!isValidPhone(fullPhone)) {
-      Toast.show({ type: 'error', text1: 'Enter a valid phone number' });
-      return;
-    }
+    setError('');
+    const fullPhone = toE164(phone);
+    if (!isValidPhone(fullPhone)) return setError('Enter a valid 10-digit mobile number.');
     setLoading(true);
     try {
       confirmationRef.current = await sendOtp(fullPhone);
       setStage('otp');
-      Toast.show({ type: 'success', text1: 'OTP sent successfully' });
+      Toast.show({ type: 'success', text1: 'OTP sent' });
     } catch (e: any) {
-      Toast.show({ type: 'error', text1: 'Could not send OTP', text2: e?.message });
+      setError(`Could not send OTP. ${e?.message ?? ''}`.trim());
     } finally {
       setLoading(false);
     }
   };
 
   const handleVerifyOtp = async () => {
-    if (otp.length !== 6) {
-      Toast.show({ type: 'error', text1: 'Enter the 6-digit OTP' });
-      return;
-    }
+    setError('');
+    if (otp.length !== 6) return setError('Enter the 6-digit OTP.');
     if (!confirmationRef.current) return;
     setLoading(true);
     try {
       await confirmOtp(confirmationRef.current, otp);
-    } catch (e: any) {
-      Toast.show({ type: 'error', text1: 'Incorrect OTP', text2: e?.message });
-    } finally {
+      await linkAccount();
+    } catch {
+      setError('Incorrect OTP. Please check and try again.');
       setLoading(false);
     }
   };
@@ -67,7 +123,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Image
           source={require('../assets/mmil-logo.png')}
           style={styles.logo}
@@ -75,25 +131,61 @@ export default function LoginScreen() {
           accessibilityLabel="MMIL logo"
         />
         <Text variant="headlineMedium" style={styles.title}>
-          MMIL Purchase
-        </Text>
-        <Text variant="bodyMedium" style={styles.subtitle}>
-          {mode === 'new'
-            ? 'Last step: verify your mobile number to finish setting up your account'
-            : 'Log in with your registered mobile number'}
+          MMIL
         </Text>
 
-        {stage === 'phone' ? (
+        {stage === 'employee' && (
           <>
+            <Text variant="bodyMedium" style={styles.subtitle}>
+              Log in with your employee ID and date of birth
+            </Text>
             <TextInput
               mode="outlined"
-              label="Phone number"
+              label="Employee ID"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              value={employeeId}
+              onChangeText={setEmployeeId}
+              style={styles.input}
+            />
+            <TextInput
+              mode="outlined"
+              label="Date of birth"
+              placeholder="DD/MM/YYYY"
+              keyboardType="number-pad"
+              maxLength={10}
+              value={dobText}
+              onChangeText={t => setDobText(maskDobInput(t))}
+              style={styles.input}
+            />
+            <ErrorText message={error} />
+            <Button
+              mode="contained"
+              onPress={handleVerifyEmployee}
+              loading={loading}
+              disabled={loading}
+              style={styles.button}
+              contentStyle={styles.buttonContent}>
+              Continue
+            </Button>
+          </>
+        )}
+
+        {stage === 'phone' && (
+          <>
+            <Text variant="bodyMedium" style={styles.subtitle}>
+              Hi {employeeName}! Enter your mobile number to receive an OTP.
+            </Text>
+            <TextInput
+              mode="outlined"
+              label="Mobile number"
               placeholder="10-digit mobile number"
               keyboardType="phone-pad"
               value={phone}
               onChangeText={setPhone}
               style={styles.input}
             />
+            <ErrorText message={error} />
             <Button
               mode="contained"
               onPress={handleSendOtp}
@@ -103,21 +195,29 @@ export default function LoginScreen() {
               contentStyle={styles.buttonContent}>
               Send OTP
             </Button>
-            <Button mode="text" onPress={() => navigation.goBack()} disabled={loading}>
+            <Button mode="text" onPress={() => resetToStart()} disabled={loading}>
               Back
             </Button>
           </>
-        ) : (
+        )}
+
+        {stage === 'otp' && (
           <>
+            <Text variant="bodyMedium" style={styles.subtitle}>
+              Enter the OTP sent to {toE164(phone)}
+            </Text>
             <TextInput
               mode="outlined"
-              label="Enter 6-digit OTP"
+              label="6-digit OTP"
               keyboardType="number-pad"
+              textContentType="oneTimeCode"
+              autoComplete="sms-otp"
               maxLength={6}
               value={otp}
               onChangeText={setOtp}
               style={styles.input}
             />
+            <ErrorText message={error} />
             <Button
               mode="contained"
               onPress={handleVerifyOtp}
@@ -125,21 +225,32 @@ export default function LoginScreen() {
               disabled={loading}
               style={styles.button}
               contentStyle={styles.buttonContent}>
-              Verify & Continue
+              Verify & Log in
             </Button>
             <Button
               mode="text"
               onPress={() => {
                 setStage('phone');
                 setOtp('');
+                setError('');
+                confirmationRef.current = null;
               }}
               disabled={loading}>
-              Change phone number
+              Change mobile number
             </Button>
           </>
         )}
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+function ErrorText({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <HelperText type="error" visible style={styles.error}>
+      {message}
+    </HelperText>
   );
 }
 
@@ -149,9 +260,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 32,
   },
   logo: {
     width: 120,
@@ -168,10 +280,15 @@ const styles = StyleSheet.create({
   subtitle: {
     textAlign: 'center',
     color: colors.textMuted,
-    marginBottom: 32,
+    marginBottom: 28,
   },
   input: {
     marginBottom: 16,
+  },
+  error: {
+    fontSize: 14,
+    marginTop: -8,
+    marginBottom: 8,
   },
   button: {
     borderRadius: 10,

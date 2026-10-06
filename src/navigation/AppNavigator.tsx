@@ -15,12 +15,19 @@ import {
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme/theme';
 import { useAuthContext } from '../hooks/AuthContext';
-import StartScreen from '../screens/StartScreen';
 import LoginScreen from '../screens/LoginScreen';
-import OnboardingScreen from '../screens/OnboardingScreen';
+import NoAccessScreen from '../screens/NoAccessScreen';
 import CreateTaskScreen from '../screens/CreateTaskScreen';
 import TaskDetailScreen from '../screens/TaskDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import SuperAdminScreen from '../screens/admin/SuperAdminScreen';
+import ImportEmployeesScreen from '../screens/admin/ImportEmployeesScreen';
+import EmployeesScreen from '../screens/admin/EmployeesScreen';
+import EmployeeDetailScreen from '../screens/admin/EmployeeDetailScreen';
+import EmployeeFormScreen from '../screens/admin/EmployeeFormScreen';
+import TeamsScreen from '../screens/admin/TeamsScreen';
+import ActivityLogScreen from '../screens/admin/ActivityLogScreen';
+import ProfileHeaderButton from '../components/ProfileHeaderButton';
 import AdminTabNavigator from './AdminTabNavigator';
 import MemberTabNavigator from './MemberTabNavigator';
 import { RootStackParamList } from '../types';
@@ -37,7 +44,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function AppNavigator() {
-  const { initializing, firebaseUser, profile, refreshProfile } = useAuthContext();
+  const { initializing, firebaseUser, profile } = useAuthContext();
   const [navReady, setNavReady] = useState(false);
   // Task to open once the user is signed in and the main screens are mounted.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -96,40 +103,73 @@ export default function AppNavigator() {
   return (
     <NavigationContainer ref={navigationRef} onReady={() => setNavReady(true)}>
       <Stack.Navigator screenOptions={{ headerStyle: { backgroundColor: colors.primary }, headerTintColor: colors.white }}>
-        {!firebaseUser ? (
-          <>
-            <Stack.Screen name="Start" component={StartScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Signup" options={{ headerShown: false }}>
-              {() => <OnboardingScreen phase="preAuth" />}
-            </Stack.Screen>
-            <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-          </>
-        ) : !profile || !profile.teamId ? (
-          <Stack.Screen name="Onboarding" options={{ headerShown: false }}>
-            {() => <OnboardingScreen phase="postAuth" onDone={refreshProfile} />}
-          </Stack.Screen>
+        {!firebaseUser || !profile ? (
+          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         ) : (
           <>
-            <Stack.Screen
-              name="Main"
-              options={{ headerShown: false }}>
-              {() => (profile.role === 'admin' ? <AdminTabNavigator /> : <MemberTabNavigator />)}
-            </Stack.Screen>
-            <Stack.Screen
-              name="CreateTask"
-              component={CreateTaskScreen}
-              options={{ title: 'New Task' }}
-            />
-            <Stack.Screen
-              name="TaskDetail"
-              component={TaskDetailScreen}
-              options={{ title: 'Task Details' }}
-            />
+            {profile.teamId ? (
+              <>
+                <Stack.Screen name="Main" options={{ headerShown: false }}>
+                  {() => (profile.role === 'admin' ? <AdminTabNavigator /> : <MemberTabNavigator />)}
+                </Stack.Screen>
+                <Stack.Screen
+                  name="CreateTask"
+                  component={CreateTaskScreen}
+                  options={{ title: 'New Task' }}
+                />
+                <Stack.Screen
+                  name="TaskDetail"
+                  component={TaskDetailScreen}
+                  options={{ title: 'Task Details' }}
+                />
+              </>
+            ) : (
+              <Stack.Screen
+                name="NoAccess"
+                component={NoAccessScreen}
+                options={{ title: 'MMIL', headerRight: () => <ProfileHeaderButton /> }}
+              />
+            )}
             <Stack.Screen
               name="Profile"
               component={ProfileScreen}
               options={{ title: 'My Profile' }}
             />
+            {profile.superAdmin && (
+              <>
+                <Stack.Screen
+                  name="SuperAdmin"
+                  component={SuperAdminScreen}
+                  options={{ title: 'Super Admin' }}
+                />
+                <Stack.Screen
+                  name="ImportEmployees"
+                  component={ImportEmployeesScreen}
+                  options={{ title: 'Import HR Sheet' }}
+                />
+                <Stack.Screen
+                  name="Employees"
+                  component={EmployeesScreen}
+                  options={{ title: 'Employees' }}
+                />
+                <Stack.Screen
+                  name="EmployeeDetail"
+                  component={EmployeeDetailScreen}
+                  options={{ title: 'Employee' }}
+                />
+                <Stack.Screen
+                  name="EmployeeForm"
+                  component={EmployeeFormScreen}
+                  options={{ title: 'Employee' }}
+                />
+                <Stack.Screen name="Teams" component={TeamsScreen} options={{ title: 'Teams' }} />
+                <Stack.Screen
+                  name="ActivityLog"
+                  component={ActivityLogScreen}
+                  options={{ title: 'Activity Log' }}
+                />
+              </>
+            )}
           </>
         )}
       </Stack.Navigator>

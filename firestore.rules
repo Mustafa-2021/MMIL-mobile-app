@@ -2,33 +2,91 @@ rules_version = '2';
 
 // Deploy with: firebase deploy --only firestore:rules
 //
-// Phase 0 baseline: matches how the app works today (any signed-in user can read and
-// write the app's collections; admin vs. member is enforced in the UI). Phase 1 replaces
-// this with role-based rules once the employee login and per-section roles exist.
+// Users sign in as emp_{employeeId} (see functions/employees.js). Profiles, teams, employees
+// and roles are written only by Cloud Functions; the app writes tasks, comments, notifications
+// and its own FCM token. Team admin vs. member differences are still enforced in the UI.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
       return request.auth != null;
     }
 
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActive() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && me().active == true;
+    }
+
+    function isSuperAdmin() {
+      return isActive() && me().superAdmin == true;
+    }
+
+    function inMyTeam(teamId) {
+      return isActive() && me().teamId != null && me().teamId == teamId;
+    }
+
+    // Server-only: lookups, secrets (DOB), throttling.
+    match /employeeSecrets/{id} {
+      allow read, write: if false;
+    }
+    match /loginThrottle/{id} {
+      allow read, write: if false;
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    match /auditLog/{id} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
     match /teams/{teamId} {
-      allow read, write: if signedIn();
+      allow read: if isActive();
+      allow write: if false;
     }
 
     match /users/{uid} {
-      allow read, write: if signedIn();
+      // Own profile is always readable so a deactivated user's app can see it and sign out.
+      allow read: if signedIn() && (request.auth.uid == uid || isActive());
+      // The app only maintains its own push token.
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken']);
+      allow create, delete: if false;
     }
 
     match /tasks/{taskId} {
-      allow read, write: if signedIn();
+      allow read, delete: if inMyTeam(resource.data.teamId);
+      allow create: if inMyTeam(request.resource.data.teamId)
+        && request.resource.data.createdBy == request.auth.uid;
+      // Updates may not move a task to another team.
+      allow update: if inMyTeam(resource.data.teamId)
+        && request.resource.data.teamId == resource.data.teamId;
 
       match /comments/{commentId} {
-        allow read, write: if signedIn();
+        function taskTeam() {
+          return get(/databases/$(database)/documents/tasks/$(taskId)).data.teamId;
+        }
+        allow read, delete: if inMyTeam(taskTeam());
+        allow create: if inMyTeam(taskTeam())
+          && request.resource.data.authorUid == request.auth.uid;
       }
     }
 
     match /notifications/{notificationId} {
-      allow read, write: if signedIn();
+      allow read: if isActive() && resource.data.userId == request.auth.uid;
+      allow create: if isActive();
+      allow update: if isActive()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if false;
     }
 
     // Everything else is closed.

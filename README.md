@@ -59,8 +59,11 @@ The signed APK is produced at `android/app/build/outputs/apk/release/app-release
 
 ## Firestore data model
 
-- `/teams/{teamId}` — `{ name, inviteCode, adminUid, createdAt }`
-- `/users/{uid}` — `{ name, phone, role, teamId, fcmToken, createdAt }`
+- `/employees/{employeeId}` — HR record `{ name, department, active, superAdmin, phone, uid, lock state }`
+- `/employeeSecrets/{employeeId}` — `{ dob }` (server-only)
+- `/auditLog/{id}` — logins, number changes, lockouts, admin actions
+- `/teams/{teamId}` — `{ name, createdAt }`
+- `/users/emp_{employeeId}` — `{ employeeId, name, department, phone, active, superAdmin, sessionVersion, role, teamId, fcmToken, createdAt }`
 - `/tasks/{taskId}` — `{ title, description, assigneeUid, assigneeName, createdBy, teamId, priority, category, status, dueDate, extensionHistory[], createdAt, updatedAt }`
 - `/notifications/{id}` — in-app notification log per user
 

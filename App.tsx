@@ -13,7 +13,7 @@ function App() {
     <SafeAreaProvider>
       <PaperProvider theme={theme}>
         <AuthProvider>
-          <StatusBar barStyle="light-content" backgroundColor={theme.colors.primary} />
+          <StatusBar barStyle="light-content" />
           <AppNavigator />
         </AuthProvider>
       </PaperProvider>

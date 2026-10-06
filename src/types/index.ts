@@ -14,19 +14,75 @@ export type TaskCategory =
 export interface Team {
   id: string;
   name: string;
-  inviteCode: string;
-  adminUid: string;
   createdAt: number;
 }
 
+/** App profile at users/{uid}; uid is `emp_{employeeId}`. Written only by Cloud Functions. */
 export interface AppUser {
   uid: string;
+  employeeId: string;
   name: string;
-  phone: string;
+  department: string;
+  phone: string | null;
+  active: boolean;
+  superAdmin: boolean;
+  /** Bumped on every login and forced logout; a device holding an older value signs out. */
+  sessionVersion: number;
   role: UserRole;
   teamId: string | null;
   fcmToken?: string | null;
   createdAt: number;
+  lastLoginAt?: number;
+}
+
+/** HR record at employees/{employeeId}; readable by super admins. The DOB is stored separately. */
+export interface Employee {
+  employeeId: string;
+  name: string;
+  department: string;
+  active: boolean;
+  superAdmin: boolean;
+  deactivatedBy?: 'import' | 'manual' | null;
+  phone: string | null;
+  uid: string | null;
+  failedAttempts: number;
+  lockedUntil: number | null;
+  linkedAt?: number;
+  lastLoginAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AuditEntry {
+  id: string;
+  type: string;
+  employeeId?: string;
+  name?: string;
+  phone?: string;
+  previousPhone?: string;
+  actorEmployeeId?: string;
+  actorName?: string;
+  details?: string;
+  createdAt: number;
+}
+
+/** One row read from the HR sheet, ready to send to importEmployees. */
+export interface EmployeeImportRow {
+  employeeId: string;
+  name: string;
+  dob: string; // YYYY-MM-DD
+  department: string;
+}
+
+export interface ImportSummary {
+  valid: number;
+  created: number;
+  updated: number;
+  reactivated: number;
+  unchanged: number;
+  deactivated: number;
+  errors: string[];
+  errorCount: number;
 }
 
 export interface ExtensionRecord {
@@ -84,11 +140,16 @@ export interface AppNotification {
 }
 
 export type RootStackParamList = {
-  Start: undefined;
-  Signup: undefined;
-  Login: { mode: 'existing' | 'new' };
-  Onboarding: undefined;
+  Login: undefined;
   Main: undefined;
+  NoAccess: undefined;
+  SuperAdmin: undefined;
+  ImportEmployees: undefined;
+  Employees: undefined;
+  EmployeeDetail: { employeeId: string };
+  EmployeeForm: { employeeId?: string } | undefined;
+  Teams: undefined;
+  ActivityLog: undefined;
   CreateTask: { taskId?: string } | undefined;
   TaskDetail: { taskId: string };
   Profile: undefined;

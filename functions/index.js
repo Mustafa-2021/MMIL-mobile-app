@@ -11,6 +11,9 @@ const db = getFirestore();
 // Same region as the Firestore database (Mumbai).
 setGlobalOptions({ region: 'asia-south1', maxInstances: 5 });
 
+// Employee ID + DOB login and super-admin management (callable functions).
+Object.assign(exports, require('./employees'));
+
 // Must match the channel created in the app (src/services/notifications.ts).
 const ANDROID_CHANNEL_ID = 'tasks';
 const TIME_ZONE = 'Asia/Kolkata';
