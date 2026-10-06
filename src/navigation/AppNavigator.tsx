@@ -45,6 +45,7 @@ import {
   syncFcmTokenOnRefresh,
 } from '../services/notifications';
 import { getTask } from '../services/tasks';
+import { canManageTeams } from '../utils/roles';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -129,13 +130,15 @@ export default function AppNavigator() {
               options={{ title: 'MMIL', headerRight: () => <ProfileHeaderButton /> }}
             />
             <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
+            {(hasTeams || canManageTeams(profile)) && (
+              <Stack.Screen
+                name="TeamPicker"
+                component={TeamPickerScreen}
+                options={{ title: 'Teams' }}
+              />
+            )}
             {hasTeams && (
               <>
-                <Stack.Screen
-                  name="TeamPicker"
-                  component={TeamPickerScreen}
-                  options={{ title: 'Team' }}
-                />
                 <Stack.Screen name="Main" options={{ headerShown: false }}>
                   {() =>
                     !profile.teamId ? (

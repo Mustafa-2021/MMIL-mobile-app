@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Menu, SegmentedButtons, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Menu, Text } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,13 +10,15 @@ import {
   logoutEmployee,
   setEmployeeActive,
   setSuperAdmin,
-  setTeamAccess,
+  setAdmin,
+  addTeamMember,
+  removeTeamMember,
   subscribeEmployee,
   subscribeEmployeeProfile,
   subscribeTeams,
   unlockEmployee,
 } from '../../services/admin';
-import { AppUser, Employee, RootStackParamList, Team, UserRole } from '../../types';
+import { AppUser, Employee, RootStackParamList, Team } from '../../types';
 import { formatDateTime } from '../../utils/helpers';
 import EmployeeStatusChip from '../../components/EmployeeStatusChip';
 
@@ -31,9 +33,6 @@ export default function EmployeeDetailScreen() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
-  // "Add to team" form.
-  const [newTeamId, setNewTeamId] = useState<string | null>(null);
-  const [newRole, setNewRole] = useState<UserRole>('member');
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
 
   useEffect(() => subscribeEmployee(employeeId, setEmployee), [employeeId]);
@@ -58,7 +57,7 @@ export default function EmployeeDetailScreen() {
   const isMe = me?.employeeId === employeeId;
   const locked = !!employee.lockedUntil && employee.lockedUntil > Date.now();
   const memberOf = appProfile?.teamIds ?? [];
-  const teamRoles = appProfile?.teamRoles ?? {};
+  const isAdmin = employee.admin === true;
   const teamName = (id: string) => teams.find(t => t.id === id)?.name ?? '…';
   const addableTeams = teams.filter(t => !memberOf.includes(t.id));
 
@@ -96,7 +95,10 @@ export default function EmployeeDetailScreen() {
       <View style={styles.card}>
         <Row label="Mobile" value={employee.phone ?? 'Not logged in yet'} />
         <Row label="Last login" value={employee.lastLoginAt ? formatDateTime(employee.lastLoginAt) : '—'} />
-        <Row label="Super admin" value={employee.superAdmin ? 'Yes' : 'No'} />
+        <Row
+          label="Role"
+          value={employee.superAdmin ? 'Super admin' : isAdmin ? 'Admin' : 'Employee'}
+        />
         {locked && <Row label="Locked until" value={formatDateTime(employee.lockedUntil!)} />}
         {!employee.active && (
           <Row
@@ -112,99 +114,63 @@ export default function EmployeeDetailScreen() {
           <Text style={[styles.hint, styles.cardBody]}>Not in any team.</Text>
         )}
         {memberOf.map(id => (
-          <View key={id} style={styles.membership}>
-            <View style={styles.membershipHeader}>
-              <Text style={styles.membershipName}>{teamName(id)}</Text>
-              <Button
-                compact
-                textColor={colors.high}
-                disabled={!!busy}
-                loading={busy === `remove-${id}`}
-                onPress={() =>
-                  confirm(
-                    `Remove from ${teamName(id)}?`,
-                    `${employee.name} will no longer see this team's tasks.`,
-                    'Remove',
-                    () =>
-                      act(`remove-${id}`, () => setTeamAccess(employeeId, id, null), 'Removed from team'),
-                  )
-                }>
-                Remove
-              </Button>
-            </View>
-            <SegmentedButtons
-              density="small"
-              value={teamRoles[id] ?? 'member'}
-              onValueChange={v =>
-                v !== teamRoles[id] &&
-                act(`role-${id}`, () => setTeamAccess(employeeId, id, v as UserRole), 'Role updated')
-              }
-              buttons={[
-                { value: 'member', label: 'Member', disabled: !!busy },
-                { value: 'admin', label: 'Team admin', disabled: !!busy },
-              ]}
-            />
+          <View key={id} style={styles.membershipHeader}>
+            <Text style={styles.membershipName}>{teamName(id)}</Text>
+            <Button
+              compact
+              textColor={colors.high}
+              disabled={!!busy}
+              loading={busy === `remove-${id}`}
+              onPress={() =>
+                confirm(
+                  `Remove from ${teamName(id)}?`,
+                  `${employee.name} will no longer see this team's tasks.`,
+                  'Remove',
+                  () =>
+                    act(`remove-${id}`, () => removeTeamMember(id, employeeId), 'Removed from team'),
+                )
+              }>
+              Remove
+            </Button>
           </View>
         ))}
 
         <View style={styles.cardBody}>
-          <Text style={styles.addTitle}>Add to a team</Text>
           {teams.length === 0 ? (
             <Text style={styles.hint}>No teams yet. Create one under Super Admin → Teams.</Text>
           ) : addableTeams.length === 0 ? (
             <Text style={styles.hint}>Already in every team.</Text>
           ) : (
-            <>
-              <Menu
-                visible={teamMenuOpen}
-                onDismiss={() => setTeamMenuOpen(false)}
-                anchor={
-                  <Button
-                    mode="outlined"
-                    icon="menu-down"
-                    contentStyle={styles.menuButton}
-                    onPress={() => setTeamMenuOpen(true)}>
-                    {newTeamId ? teamName(newTeamId) : 'Choose team'}
-                  </Button>
-                }>
-                {addableTeams.map(t => (
-                  <Menu.Item
-                    key={t.id}
-                    title={t.name}
-                    onPress={() => {
-                      setNewTeamId(t.id);
-                      setTeamMenuOpen(false);
-                    }}
-                  />
-                ))}
-              </Menu>
-              <SegmentedButtons
-                style={styles.segment}
-                value={newRole}
-                onValueChange={v => setNewRole(v as UserRole)}
-                buttons={[
-                  { value: 'member', label: 'Member' },
-                  { value: 'admin', label: 'Team admin' },
-                ]}
-              />
-              <Button
-                mode="contained"
-                style={styles.save}
-                disabled={!newTeamId || !!busy}
-                loading={busy === 'add'}
-                onPress={() =>
-                  newTeamId &&
-                  act('add', () => setTeamAccess(employeeId, newTeamId, newRole), 'Added to team').then(
-                    () => {
-                      setNewTeamId(null);
-                      setNewRole('member');
-                    },
-                  )
-                }>
-                Add to team
-              </Button>
-            </>
+            <Menu
+              visible={teamMenuOpen}
+              onDismiss={() => setTeamMenuOpen(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  icon="plus"
+                  loading={busy === 'add'}
+                  disabled={!!busy}
+                  onPress={() => setTeamMenuOpen(true)}>
+                  Add to a team
+                </Button>
+              }>
+              {addableTeams.map(t => (
+                <Menu.Item
+                  key={t.id}
+                  title={t.name}
+                  onPress={() => {
+                    setTeamMenuOpen(false);
+                    act('add', () => addTeamMember(t.id, employeeId), `Added to ${t.name}`);
+                  }}
+                />
+              ))}
+            </Menu>
           )}
+          <Text style={styles.hint}>
+            {isAdmin
+              ? 'As an admin, they manage the members and tasks of every team they are in.'
+              : 'Members see and update their own tasks in each team.'}
+          </Text>
         </View>
       </View>
 
@@ -246,6 +212,29 @@ export default function EmployeeDetailScreen() {
           Log out from phone
         </Button>
       )}
+      <Button
+        mode="outlined"
+        icon={isAdmin ? 'account-tie-remove-outline' : 'account-tie-outline'}
+        style={styles.action}
+        loading={busy === 'admin'}
+        disabled={!!busy || !employee.active}
+        onPress={() =>
+          confirm(
+            isAdmin ? 'Remove admin?' : 'Make admin?',
+            isAdmin
+              ? `${employee.name} will become a regular member of their teams and can no longer create teams.`
+              : `${employee.name} will be able to create teams, add and remove members, and manage all tasks in their teams.`,
+            isAdmin ? 'Remove admin' : 'Make admin',
+            () =>
+              act(
+                'admin',
+                () => setAdmin(employeeId, !isAdmin),
+                isAdmin ? 'Admin removed' : 'Now an admin',
+              ),
+          )
+        }>
+        {isAdmin ? 'Remove admin' : 'Make admin (can create teams)'}
+      </Button>
       <Button
         mode="outlined"
         icon={employee.superAdmin ? 'shield-remove-outline' : 'shield-account-outline'}
@@ -367,41 +356,24 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
   },
-  membership: {
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
   membershipHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   membershipName: {
     fontWeight: '700',
     fontSize: 16,
     color: colors.text,
   },
-  addTitle: {
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  menuButton: {
-    flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-  },
   hint: {
     color: colors.textMuted,
     marginTop: 8,
-  },
-  segment: {
-    marginTop: 12,
-  },
-  save: {
-    marginTop: 12,
-    borderRadius: 10,
   },
   action: {
     borderRadius: 10,

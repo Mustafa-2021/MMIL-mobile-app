@@ -24,7 +24,7 @@ export default function TeamsScreen() {
     }
     setSaving(true);
     try {
-      await createTeam(trimmed);
+      await createTeam(trimmed, false);
       setName('');
       Toast.show({ type: 'success', text1: `Team ${trimmed} created` });
     } catch (e: any) {
@@ -56,7 +56,7 @@ export default function TeamsScreen() {
         </Button>
       </View>
       <Text style={styles.hint}>
-        To add someone to a team, open Employees, pick the employee and set their team access.
+        Add members from an employee's page (Employees). Admins can also create their own teams and add members from the app's Team section.
       </Text>
       <FlatList
         data={teams}

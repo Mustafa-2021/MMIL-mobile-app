@@ -190,9 +190,9 @@ exports.linkEmployee = onCall(async request => {
         phone,
         active: true,
         superAdmin: emp.superAdmin === true,
+        admin: emp.admin === true,
         sessionVersion: next,
         teamIds: prev?.teamIds ?? [],
-        teamRoles: prev?.teamRoles ?? {},
         fcmToken: null,
         createdAt: prev?.createdAt ?? now,
         lastLoginAt: now,
@@ -496,67 +496,171 @@ exports.setSuperAdmin = onCall(async request => {
   });
 });
 
-/**
- * Adds an employee to a team or changes their role there ({ teamId, role: 'admin'|'member' }),
- * or removes them from it ({ teamId, role: null }). Employees can be in several teams.
- * Works before their first login (the profile is created ahead of time).
- */
-exports.setTeamAccess = onCall(async request => {
+// ---------------------------------------------------------------------------------------
+// Teams. Admins (VP level, marked by the super admin) create teams and manage the members of
+// teams they belong to; inside a team they have full task rights. Everyone else is a member.
+// ---------------------------------------------------------------------------------------
+
+async function requireActiveUser(request) {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Please log in.');
+  const me = (await db().doc(`users/${uid}`).get()).data();
+  if (!me || me.active !== true) throw new HttpsError('permission-denied', 'Your access is disabled.');
+  return { uid, ...me, teamIds: me.teamIds ?? [] };
+}
+
+const isAdminUser = u => u?.admin === true || u?.superAdmin === true;
+
+async function requireTeamManager(request, teamId) {
+  const me = await requireActiveUser(request);
+  if (me.superAdmin === true || (me.admin === true && me.teamIds.includes(teamId))) return me;
+  throw new HttpsError('permission-denied', 'Only an admin of this team can do this.');
+}
+
+async function getTeamOrThrow(teamId) {
+  if (!teamId) throw new HttpsError('invalid-argument', 'Team is required.');
+  const snap = await db().doc(`teams/${teamId}`).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Team not found.');
+  return snap.data();
+}
+
+/** Profile fields for an employee who has never logged in (created ahead of time). */
+function newProfile(employeeId, emp) {
+  return {
+    employeeId,
+    name: emp.name,
+    department: emp.department ?? '',
+    phone: null,
+    active: emp.active === true,
+    superAdmin: emp.superAdmin === true,
+    admin: emp.admin === true,
+    sessionVersion: 0,
+    teamIds: [],
+    fcmToken: null,
+    createdAt: Date.now(),
+  };
+}
+
+/** Super admin: mark an employee as Admin (can create and manage teams). */
+exports.setAdmin = onCall(async request => {
   const actor = await requireSuperAdmin(request);
   const { employeeId, emp } = await getEmployeeOrThrow(request.data?.employeeId);
-  const teamId = request.data?.teamId ? String(request.data.teamId) : null;
-  if (!teamId) throw new HttpsError('invalid-argument', 'Team is required.');
-  const role = request.data?.role == null ? null : request.data.role === 'admin' ? 'admin' : 'member';
-  const team = await db().doc(`teams/${teamId}`).get();
-  if (!team.exists) throw new HttpsError('not-found', 'Team not found.');
-  const teamName = team.data().name;
-
+  const value = request.data?.value === true;
+  await db().doc(`employees/${employeeId}`).update({ admin: value, updatedAt: Date.now() });
   const userRef = db().doc(`users/${employeeUid(employeeId)}`);
-  await db().runTransaction(async tx => {
-    const snap = await tx.get(userRef);
-    const prev = snap.exists ? snap.data() : null;
-    const teamIds = new Set(prev?.teamIds ?? []);
-    const teamRoles = { ...(prev?.teamRoles ?? {}) };
-    if (role) {
-      teamIds.add(teamId);
-      teamRoles[teamId] = role;
-    } else {
-      teamIds.delete(teamId);
-      delete teamRoles[teamId];
-    }
-    const fields = { teamIds: [...teamIds], teamRoles };
-    if (prev) {
-      tx.update(userRef, fields);
-    } else {
-      tx.set(userRef, {
-        employeeId,
-        name: emp.name,
-        department: emp.department ?? '',
-        phone: null,
-        active: emp.active === true,
-        superAdmin: emp.superAdmin === true,
-        sessionVersion: 0,
-        ...fields,
-        fcmToken: null,
-        createdAt: Date.now(),
-      });
-    }
-  });
-
-  await audit('team-access', {
+  const snap = await userRef.get();
+  if (snap.exists) await userRef.update({ admin: value });
+  else await userRef.set({ ...newProfile(employeeId, emp), admin: value });
+  await audit(value ? 'admin-granted' : 'admin-removed', {
     employeeId,
     name: emp.name,
     actorEmployeeId: actor.employeeId,
     actorName: actor.name,
-    details: role ? `${teamName} (${role === 'admin' ? 'team admin' : 'member'})` : `Removed from ${teamName}`,
   });
 });
 
+/**
+ * Adds an employee to a team ({ teamId, member: true }) or removes them ({ member: false }).
+ * Allowed for the super admin and for admins of that team. A team always keeps one admin.
+ */
+exports.setTeamAccess = onCall(async request => {
+  const teamId = request.data?.teamId ? String(request.data.teamId) : null;
+  const team = await getTeamOrThrow(teamId);
+  const actor = await requireTeamManager(request, teamId);
+  const { employeeId, emp } = await getEmployeeOrThrow(request.data?.employeeId);
+  const member = request.data?.member !== false;
+  const userRef = db().doc(`users/${employeeUid(employeeId)}`);
+
+  await db().runTransaction(async tx => {
+    const snap = await tx.get(userRef);
+    const prev = snap.exists ? snap.data() : null;
+    const teamIds = new Set(prev?.teamIds ?? []);
+    if (member) {
+      if (!emp.active) throw new HttpsError('failed-precondition', `${emp.name} is deactivated.`);
+      teamIds.add(teamId);
+    } else {
+      if (!teamIds.has(teamId)) return;
+      if (isAdminUser(prev)) {
+        const members = await tx.get(db().collection('users').where('teamIds', 'array-contains', teamId));
+        const otherAdmins = members.docs.filter(d => d.id !== userRef.id && isAdminUser(d.data()));
+        if (otherAdmins.length === 0) {
+          throw new HttpsError(
+            'failed-precondition',
+            `${team.name} needs at least one admin. Add another admin to the team first.`,
+          );
+        }
+      }
+      teamIds.delete(teamId);
+    }
+    if (prev) tx.update(userRef, { teamIds: [...teamIds] });
+    else tx.set(userRef, { ...newProfile(employeeId, emp), teamIds: [...teamIds] });
+  });
+
+  await audit(member ? 'team-member-added' : 'team-member-removed', {
+    employeeId,
+    name: emp.name,
+    actorEmployeeId: actor.employeeId,
+    actorName: actor.name,
+    details: team.name,
+  });
+});
+
+/**
+ * Admins and the super admin create teams. Admins always join the teams they create; the super
+ * admin can create a team for others from Super Admin → Teams ({ join: false }).
+ */
 exports.createTeam = onCall(async request => {
-  const actor = await requireSuperAdmin(request);
+  const actor = await requireActiveUser(request);
+  if (!isAdminUser(actor)) throw new HttpsError('permission-denied', 'Only admins can create teams.');
   const name = cleanText(request.data?.name, 60);
   if (!name) throw new HttpsError('invalid-argument', 'Team name is required.');
-  const ref = await db().collection('teams').add({ name, createdAt: Date.now() });
+  const existing = await db().collection('teams').get();
+  if (existing.docs.some(d => String(d.data().name).toLowerCase() === name.toLowerCase())) {
+    throw new HttpsError('already-exists', `A team called ${name} already exists.`);
+  }
+  const ref = await db().collection('teams').add({ name, createdBy: actor.uid, createdAt: Date.now() });
+  if (request.data?.join !== false || actor.superAdmin !== true) {
+    await db().doc(`users/${actor.uid}`).update({ teamIds: FieldValue.arrayUnion(ref.id) });
+  }
   await audit('team-created', { actorEmployeeId: actor.employeeId, actorName: actor.name, details: name });
   return { id: ref.id };
+});
+
+exports.renameTeam = onCall(async request => {
+  const teamId = request.data?.teamId ? String(request.data.teamId) : null;
+  const team = await getTeamOrThrow(teamId);
+  const actor = await requireTeamManager(request, teamId);
+  const name = cleanText(request.data?.name, 60);
+  if (!name) throw new HttpsError('invalid-argument', 'Team name is required.');
+  await db().doc(`teams/${teamId}`).update({ name });
+  await audit('team-renamed', {
+    actorEmployeeId: actor.employeeId,
+    actorName: actor.name,
+    details: `${team.name} → ${name}`,
+  });
+});
+
+/** Employee lookup for admins adding members: ID, name and department only. */
+exports.searchEmployeesForTeam = onCall(async request => {
+  const me = await requireActiveUser(request);
+  if (!isAdminUser(me)) throw new HttpsError('permission-denied', 'Only admins can add members.');
+  const term = cleanText(request.data?.query, 60);
+  if (term.length < 2) return { results: [] };
+  const results = new Map();
+  const byId = await db().doc(`employees/${term.toUpperCase()}`).get();
+  if (byId.exists) results.set(byId.id, byId.data());
+  const lower = term.toLowerCase();
+  const byName = await db()
+    .collection('employees')
+    .orderBy('nameLower')
+    .startAt(lower)
+    .endAt(`${lower}`)
+    .limit(30)
+    .get();
+  byName.docs.forEach(d => results.set(d.id, d.data()));
+  return {
+    results: [...results.values()]
+      .filter(e => e.active === true)
+      .map(e => ({ employeeId: e.employeeId, name: e.name, department: e.department ?? '' })),
+  };
 });

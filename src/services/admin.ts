@@ -11,7 +11,7 @@ import {
   query,
   startAt,
 } from '@react-native-firebase/firestore';
-import { AppUser, AuditEntry, Employee, EmployeeImportRow, ImportSummary, UserRole } from '../types';
+import { AppUser, AuditEntry, Employee, EmployeeImportRow, ImportSummary } from '../types';
 import { callFunction } from './functions';
 
 // Super-admin operations. Every write goes through a Cloud Function (functions/employees.js),
@@ -92,8 +92,7 @@ export const logoutEmployee = (employeeId: string) => callFunction('logoutEmploy
 export const setSuperAdmin = (employeeId: string, value: boolean) =>
   callFunction('setSuperAdmin', { employeeId, value });
 
-/** Adds the employee to a team or changes their role in it; role null removes them. */
-export const setTeamAccess = (employeeId: string, teamId: string, role: UserRole | null) =>
-  callFunction('setTeamAccess', { employeeId, teamId, role });
+export const setAdmin = (employeeId: string, value: boolean) =>
+  callFunction('setAdmin', { employeeId, value });
 
-export const createTeam = (name: string) => callFunction<{ id: string }>('createTeam', { name });
+export { addTeamMember, removeTeamMember, createTeam } from './team';

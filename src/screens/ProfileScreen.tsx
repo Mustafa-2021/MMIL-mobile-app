@@ -56,7 +56,7 @@ export default function ProfileScreen() {
         <Text style={styles.name}>{profile.name}</Text>
         <View style={styles.roleChip}>
           <Text style={styles.roleText}>
-            {profile.superAdmin ? 'Super Admin' : 'Employee'}
+            {profile.superAdmin ? 'Super Admin' : profile.admin ? 'Admin' : 'Employee'}
           </Text>
         </View>
       </View>
@@ -69,7 +69,7 @@ export default function ProfileScreen() {
           label={teams.length > 1 ? 'Teams' : 'Team'}
           value={
             teams
-              .map(t => (profile.teamRoles[t.id] === 'admin' ? `${t.name} (admin)` : t.name))
+              .map(t => t.name)
               .join(', ') || '—'
           }
         />

@@ -28,12 +28,13 @@ export interface AppUser {
   superAdmin: boolean;
   /** Bumped on every login and forced logout; a device holding an older value signs out. */
   sessionVersion: number;
-  /** Teams the employee belongs to (stored), with their role in each. */
+  /** Admin (VP level, set by the super admin): creates teams, manages their members and tasks. */
+  admin: boolean;
+  /** Teams the employee belongs to. */
   teamIds: string[];
-  teamRoles: Record<string, UserRole>;
   /**
-   * Derived on the client (not stored): the team currently open in the Team section and the
-   * employee's role in it. null / 'member' outside the Team section or with no team.
+   * Derived on the client (not stored): the team currently open in the Team section, and the
+   * role in it — 'admin' for admins and the super admin, otherwise 'member'.
    */
   teamId: string | null;
   role: UserRole;
@@ -49,6 +50,7 @@ export interface Employee {
   department: string;
   active: boolean;
   superAdmin: boolean;
+  admin?: boolean;
   deactivatedBy?: 'import' | 'manual' | null;
   phone: string | null;
   uid: string | null;

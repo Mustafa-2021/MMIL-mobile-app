@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { AppUser } from '../types';
+import { roleInTeams } from '../utils/roles';
 import { useAuth } from './useAuth';
 import { User } from '@react-native-firebase/auth';
 
@@ -28,14 +29,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const profile = useMemo<AppUser | null>(() => {
     if (!stored) return null;
     const teamIds = stored.teamIds ?? [];
-    const teamRoles = stored.teamRoles ?? {};
     const teamId = activeTeamId && teamIds.includes(activeTeamId) ? activeTeamId : null;
     return {
       ...stored,
+      admin: stored.admin === true,
       teamIds,
-      teamRoles,
       teamId,
-      role: teamId ? teamRoles[teamId] ?? 'member' : 'member',
+      role: teamId ? roleInTeams(stored) : 'member',
     };
   }, [stored, activeTeamId]);
 

@@ -22,6 +22,19 @@ const LABELS: Record<string, { icon: string; color: string; text: (e: AuditEntry
   'super-admin-granted': { icon: 'shield-account-outline', color: colors.primary, text: () => 'Made super admin' },
   'super-admin-removed': { icon: 'shield-remove-outline', color: colors.primary, text: () => 'Super admin removed' },
   'team-access': { icon: 'account-group-outline', color: colors.primary, text: e => `Team: ${e.details ?? ''}` },
+  'team-member-added': {
+    icon: 'account-multiple-plus-outline',
+    color: colors.primary,
+    text: e => `Added to ${e.details ?? 'team'}`,
+  },
+  'team-member-removed': {
+    icon: 'account-multiple-minus-outline',
+    color: colors.primary,
+    text: e => `Removed from ${e.details ?? 'team'}`,
+  },
+  'team-renamed': { icon: 'pencil-outline', color: colors.primary, text: e => `Team renamed: ${e.details ?? ''}` },
+  'admin-granted': { icon: 'account-tie-outline', color: colors.primary, text: () => 'Made admin' },
+  'admin-removed': { icon: 'account-tie-remove-outline', color: colors.primary, text: () => 'Admin removed' },
   'team-created': { icon: 'account-multiple-plus-outline', color: colors.primary, text: e => `Team created: ${e.details ?? ''}` },
   'employee-added': { icon: 'account-plus-outline', color: colors.primary, text: () => 'Employee added' },
   'employee-edited': {

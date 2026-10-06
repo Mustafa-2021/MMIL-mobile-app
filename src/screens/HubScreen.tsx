@@ -8,6 +8,7 @@ import { colors } from '../theme/theme';
 import { useAuthContext } from '../hooks/AuthContext';
 import { useTeams } from '../hooks/useTeam';
 import { RootStackParamList } from '../types';
+import { canManageTeams } from '../utils/roles';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -19,15 +20,18 @@ export default function HubScreen() {
   if (!profile) return null;
 
   const teamCount = profile.teamIds.length;
+  const isAdmin = canManageTeams(profile);
   const teamSubtitle =
     teamCount === 0
-      ? 'You are not in any team yet'
+      ? isAdmin
+        ? 'Create your first team'
+        : 'You are not in any team yet'
       : teams.length
       ? teams.map(t => t.name).join(', ')
       : `${teamCount} team${teamCount === 1 ? '' : 's'}`;
 
   const openTeam = () => {
-    if (teamCount === 1) {
+    if (teamCount === 1 && !isAdmin) {
       setActiveTeamId(profile.teamIds[0]);
       navigation.navigate('Main');
     } else {
@@ -59,7 +63,7 @@ export default function HubScreen() {
         title="Team"
         subtitle={teamSubtitle}
         color={colors.primary}
-        disabled={teamCount === 0}
+        disabled={teamCount === 0 && !isAdmin}
         onPress={openTeam}
       />
       {profile.superAdmin && (
