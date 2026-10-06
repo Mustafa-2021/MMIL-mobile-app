@@ -9,7 +9,6 @@ import { useAuthContext } from '../../hooks/AuthContext';
 import {
   logoutEmployee,
   setEmployeeActive,
-  setSuperAdmin,
   setAdmin,
   addTeamMember,
   removeTeamMember,
@@ -212,52 +211,31 @@ export default function EmployeeDetailScreen() {
           Log out from phone
         </Button>
       )}
-      <Button
-        mode="outlined"
-        icon={isAdmin ? 'account-tie-remove-outline' : 'account-tie-outline'}
-        style={styles.action}
-        loading={busy === 'admin'}
-        disabled={!!busy || !employee.active}
-        onPress={() =>
-          confirm(
-            isAdmin ? 'Remove admin?' : 'Make admin?',
-            isAdmin
-              ? `${employee.name} will become a regular member of their teams and can no longer create teams.`
-              : `${employee.name} will be able to create teams, add and remove members, and manage all tasks in their teams.`,
-            isAdmin ? 'Remove admin' : 'Make admin',
-            () =>
-              act(
-                'admin',
-                () => setAdmin(employeeId, !isAdmin),
-                isAdmin ? 'Admin removed' : 'Now an admin',
-              ),
-          )
-        }>
-        {isAdmin ? 'Remove admin' : 'Make admin (can create teams)'}
-      </Button>
-      <Button
-        mode="outlined"
-        icon={employee.superAdmin ? 'shield-remove-outline' : 'shield-account-outline'}
-        style={styles.action}
-        loading={busy === 'super'}
-        disabled={!!busy || (isMe && employee.superAdmin)}
-        onPress={() =>
-          confirm(
-            employee.superAdmin ? 'Remove super admin?' : 'Make super admin?',
-            employee.superAdmin
-              ? `${employee.name} will no longer be able to manage employees.`
-              : `${employee.name} will be able to manage all employees, teams and access.`,
-            employee.superAdmin ? 'Remove' : 'Make super admin',
-            () =>
-              act(
-                'super',
-                () => setSuperAdmin(employeeId, !employee.superAdmin),
-                employee.superAdmin ? 'Super admin removed' : 'Super admin granted',
-              ),
-          )
-        }>
-        {employee.superAdmin ? 'Remove super admin' : 'Make super admin'}
-      </Button>
+      {!employee.superAdmin && (
+        <Button
+          mode="outlined"
+          icon={isAdmin ? 'shield-remove-outline' : 'shield-account-outline'}
+          style={styles.action}
+          loading={busy === 'admin'}
+          disabled={!!busy || !employee.active}
+          onPress={() =>
+            confirm(
+              isAdmin ? 'Remove admin?' : 'Make admin?',
+              isAdmin
+                ? `${employee.name} will become a regular member of their teams and can no longer create teams.`
+                : `${employee.name} will be able to create teams, add and remove members, and manage all tasks in their teams.`,
+              isAdmin ? 'Remove admin' : 'Make admin',
+              () =>
+                act(
+                  'admin',
+                  () => setAdmin(employeeId, !isAdmin),
+                  isAdmin ? 'Admin removed' : `${employee.name} is now an admin`,
+                ),
+            )
+          }>
+          {isAdmin ? 'Remove admin' : 'Make admin'}
+        </Button>
+      )}
       <Button
         mode="outlined"
         icon={employee.active ? 'account-off-outline' : 'account-check-outline'}

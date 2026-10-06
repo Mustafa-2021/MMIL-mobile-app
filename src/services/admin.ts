@@ -89,9 +89,6 @@ export const unlockEmployee = (employeeId: string) => callFunction('unlockEmploy
 
 export const logoutEmployee = (employeeId: string) => callFunction('logoutEmployee', { employeeId });
 
-export const setSuperAdmin = (employeeId: string, value: boolean) =>
-  callFunction('setSuperAdmin', { employeeId, value });
-
 export const setAdmin = (employeeId: string, value: boolean) =>
   callFunction('setAdmin', { employeeId, value });
 

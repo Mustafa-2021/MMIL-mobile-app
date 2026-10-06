@@ -478,24 +478,6 @@ exports.logoutEmployee = onCall(async request => {
   });
 });
 
-exports.setSuperAdmin = onCall(async request => {
-  const actor = await requireSuperAdmin(request);
-  const { employeeId, emp } = await getEmployeeOrThrow(request.data?.employeeId);
-  const value = request.data?.value === true;
-  if (!value && employeeId === actor.employeeId) {
-    throw new HttpsError('failed-precondition', 'You cannot remove your own super admin access.');
-  }
-  await db().doc(`employees/${employeeId}`).update({ superAdmin: value, updatedAt: Date.now() });
-  const userRef = db().doc(`users/${employeeUid(employeeId)}`);
-  if ((await userRef.get()).exists) await userRef.update({ superAdmin: value });
-  await audit(value ? 'super-admin-granted' : 'super-admin-removed', {
-    employeeId,
-    name: emp.name,
-    actorEmployeeId: actor.employeeId,
-    actorName: actor.name,
-  });
-});
-
 // ---------------------------------------------------------------------------------------
 // Teams. Admins (VP level, marked by the super admin) create teams and manage the members of
 // teams they belong to; inside a team they have full task rights. Everyone else is a member.
