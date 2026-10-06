@@ -1,8 +1,19 @@
-# MMIL Purchase
+# MMIL
 
-A React Native (bare CLI, TypeScript) Android app for a company's purchase department to
-manage tasks, assignees, priorities, due dates and extensions, with an admin/member workflow
-backed by Firebase (Auth phone OTP, Firestore, Cloud Messaging).
+A React Native (bare CLI, TypeScript) company app backed by Firebase (Auth phone OTP,
+Firestore, Storage, Cloud Messaging, Cloud Functions, Hosting). It currently contains the
+purchase department's task system (tasks, assignees, priorities, due dates and extensions, with
+an admin/member workflow) and is being extended in phases:
+
+| Phase | Scope |
+|---|---|
+| 0 | Foundation: rename to MMIL (`com.mmil.app`), Firestore rules + Hosting config in the repo |
+| 1 | Employee ID + DOB + phone-OTP login, super admin (HR list import, roles, lockout, deactivation) |
+| 2 | Home screen with HR (coming soon) / Visitor / Team sections; Team becomes multi-department |
+| 3 | Visitor web form (QR at the gate) + live digital gate pass, hosted on Firebase Hosting |
+| 4 | Visitor screens in the app: guard, officer approve/reject, Meeting done, exit |
+| 5 | iOS build (on a Mac) and Play Store / App Store preparation |
+| 6 | Extras: SMS/WhatsApp pass link, approve from notification, visitor register export |
 
 ## Prerequisites (already set up on this machine)
 
@@ -13,7 +24,8 @@ backed by Firebase (Auth phone OTP, Firestore, Cloud Messaging).
 
 ## Firebase setup
 
-- `android/app/google-services.json` is already in place for the `com.mmil.purchase` package.
+- `android/app/google-services.json` must be the one downloaded for the `com.mmil.app` package
+  (Project settings → Your apps → Android app `com.mmil.app`).
 - **Important:** open the Firebase console → Authentication → Sign-in method → Phone, and enable it.
 - **Important:** add these SHA certificate fingerprints under Project settings → your Android app,
   so Phone Auth can verify silently without falling back to a reCAPTCHA web view:
@@ -57,11 +69,8 @@ The signed APK is produced at `android/app/build/outputs/apk/release/app-release
   tools (CMake/ninja) hit Windows' 260-character path limit under the original path (which had
   a space in it), so the whole project was moved to this short path — keep it short if you move
   it again, and re-run `npm install` if you do since some native build caches embed absolute paths.
-- **Daily 10 AM reminder** is implemented as a locally scheduled notification (via Notifee),
-  rescheduled to tomorrow's 10 AM whenever the app opens with pending tasks, rather than a
-  Firebase Cloud Function — Cloud Functions require the Blaze (pay-as-you-go) billing plan and a
-  separate `firebase deploy`, which wasn't set up here. A Cloud Function is a straightforward
-  follow-up if you want a true server-side trigger that doesn't depend on the app having run recently.
+- **Daily reminder** is sent at 9:00 AM IST by the `dailyTaskReminder` Cloud Function
+  (`functions/index.js`), replacing the earlier locally scheduled 10 AM Notifee reminder.
 - **Excel export to "Downloads"**: Android 10+ blocks apps from writing directly into the public
   Downloads folder without scoped-storage APIs. The app generates the `.xlsx` file and opens the
   native Share sheet so you can save it to Downloads (or anywhere else, e.g. WhatsApp, email) in

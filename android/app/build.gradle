@@ -84,9 +84,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.mmil.purchase"
+    namespace "com.mmil.app"
     defaultConfig {
-        applicationId "com.mmil.purchase"
+        applicationId "com.mmil.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

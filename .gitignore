@@ -77,3 +77,6 @@ yarn-error.log
 
 # Metro log
 metro.log
+
+# Firebase CLI
+firebase-debug.log

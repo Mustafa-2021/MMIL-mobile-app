@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-MMIL Purchase: a bare React Native 0.87 (TypeScript) **Android-only** app (`com.mmil.purchase`, min SDK 24) for a purchase department to assign and track tasks. Backend is Firebase project `purchase-team-app`: phone-OTP Auth, Firestore, Cloud Storage, FCM, and Cloud Functions (`asia-south1`). The `ios/` folder is template scaffolding and unused.
+MMIL: a bare React Native 0.87 (TypeScript) company app (`com.mmil.app`, min SDK 24). Today it contains the task system built for the purchase department; it is being extended in phases into three sections — **Team** (the existing task system, becoming multi-department), **Visitor** (gate pass: visitor web form via QR → guard photo → officer approve/reject → digital pass → exit), and **HR** (placeholder) — behind an Employee ID + DOB + phone-OTP login with a super admin. Backend is Firebase project `purchase-team-app`: phone-OTP Auth, Firestore, Cloud Storage, FCM, Cloud Functions (`asia-south1`), and Hosting (`web/`, the visitor form/pass in Phase 3). Android is built now; iOS will be built later on a Mac (the `ios/` folder is still template scaffolding, its Xcode project still named `MMILPurchase`).
 
 The project must stay at a short path (`C:\Mustafa\MMILPUR`): the Android CMake/ninja build hits Windows' 260-char path limit otherwise. If moved, re-run `npm install` (native caches embed absolute paths).
 
@@ -22,6 +22,8 @@ cd android && ./gradlew assembleRelease   # signed APK -> android/app/build/outp
 
 cd functions && npm run deploy            # firebase deploy --only functions
 firebase deploy --only storage            # storage.rules
+firebase deploy --only firestore:rules    # firestore.rules
+firebase deploy --only hosting            # web/
 ```
 
 Release signing uses `android/app/keystore/mmil-purchase-release.keystore` with passwords in `android/keystore.properties` (both git-ignored and unrecoverable — never delete or regenerate). Prettier: single quotes, trailing commas, `arrowParens: 'avoid'`.
@@ -38,7 +40,7 @@ Release signing uses `android/app/keystore/mmil-purchase-release.keystore` with 
 3. Otherwise → `Main` = `AdminTabNavigator` or `MemberTabNavigator` by `profile.role`, plus `CreateTask`, `TaskDetail`, `Profile` stack screens.
 After changing the user's `role`/`teamId`, call `refreshProfile()` — the profile is loaded once, not subscribed.
 
-**Data model (Firestore):** `teams`, `users/{uid}` (`role`, `teamId`, `fcmToken`), `tasks` (with `extensionHistory[]` of rounds `R1, R2…` and optional single `attachment`), `tasks/{id}/comments` subcollection, `notifications`. Types in `src/types/index.ts`. Timestamps are epoch millis (`Date.now()`), not Firestore Timestamps. Queries avoid `where` + `orderBy` on different fields (sorting happens client-side) to avoid needing composite indexes. Deletes don't cascade: `deleteTask` manually removes comments and the Storage attachment. Admin vs. member permissions are enforced in the UI (e.g. `isAdmin` checks in `TaskDetailScreen`); no Firestore rules file is kept in this repo.
+**Data model (Firestore):** `teams`, `users/{uid}` (`role`, `teamId`, `fcmToken`), `tasks` (with `extensionHistory[]` of rounds `R1, R2…` and optional single `attachment`), `tasks/{id}/comments` subcollection, `notifications`. Types in `src/types/index.ts`. Timestamps are epoch millis (`Date.now()`), not Firestore Timestamps. Queries avoid `where` + `orderBy` on different fields (sorting happens client-side) to avoid needing composite indexes. Deletes don't cascade: `deleteTask` manually removes comments and the Storage attachment. Admin vs. member permissions are enforced in the UI (e.g. `isAdmin` checks in `TaskDetailScreen`); `firestore.rules` is currently a signed-in-only baseline and gets role-based rules in Phase 1.
 
 **Notifications pipeline:** the app never sends pushes directly. It writes a doc to `notifications` via `notifyUser()` (used for assignment, comments, extension requests, status changes); the `pushOnNotification` Cloud Function (`functions/index.js`) sends the FCM push to that user's `fcmToken` and clears stale tokens. `dailyTaskReminder` runs at 9:00 AM IST. The Android channel id `'tasks'` must match in both `src/services/notifications.ts` and `functions/index.js`. Foreground pushes are displayed via Notifee; tapping any notification with a `taskId` navigates to `TaskDetail` (handled in `AppNavigator`). The FCM token is cleared on sign-out. (The README's "local 10 AM Notifee reminder" note is outdated — it was replaced by the Cloud Function.)
 
