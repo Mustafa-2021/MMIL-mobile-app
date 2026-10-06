@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { Button, Menu, Text } from 'react-native-paper';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { useDatePicker } from '../components/DatePicker';
 import Toast from 'react-native-toast-message';
 import { colors } from '../theme/theme';
 import { useAuthContext } from '../hooks/AuthContext';
@@ -19,14 +19,9 @@ export default function ReportsScreen() {
   const [toDate, setToDate] = useState<Date | null>(null);
   const [assigneeUid, setAssigneeUid] = useState<string | null>(null);
 
+  const [openDatePicker, datePicker] = useDatePicker();
   const pickDate = (current: Date | null, onPick: (d: Date) => void) =>
-    DateTimePickerAndroid.open({
-      value: current ?? new Date(),
-      mode: 'date',
-      onChange: (event, date) => {
-        if (event.type === 'set' && date) onPick(date);
-      },
-    });
+    openDatePicker({ value: current ?? new Date(), onPick });
   const [assigneeMenu, setAssigneeMenu] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -120,6 +115,7 @@ export default function ReportsScreen() {
           Clear Filters
         </Button>
       )}
+      {datePicker}
     </ScrollView>
   );
 }

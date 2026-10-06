@@ -191,8 +191,8 @@ exports.linkEmployee = onCall(async request => {
         active: true,
         superAdmin: emp.superAdmin === true,
         sessionVersion: next,
-        role: prev?.role ?? 'member',
-        teamId: prev?.teamId ?? null,
+        teamIds: prev?.teamIds ?? [],
+        teamRoles: prev?.teamRoles ?? {},
         fcmToken: null,
         createdAt: prev?.createdAt ?? now,
         lastLoginAt: now,
@@ -496,44 +496,59 @@ exports.setSuperAdmin = onCall(async request => {
   });
 });
 
-/** Puts an employee in a team (or removes them with teamId null). Works before their first login. */
+/**
+ * Adds an employee to a team or changes their role there ({ teamId, role: 'admin'|'member' }),
+ * or removes them from it ({ teamId, role: null }). Employees can be in several teams.
+ * Works before their first login (the profile is created ahead of time).
+ */
 exports.setTeamAccess = onCall(async request => {
   const actor = await requireSuperAdmin(request);
   const { employeeId, emp } = await getEmployeeOrThrow(request.data?.employeeId);
   const teamId = request.data?.teamId ? String(request.data.teamId) : null;
-  const role = request.data?.role === 'admin' ? 'admin' : 'member';
-  let teamName = null;
-  if (teamId) {
-    const team = await db().doc(`teams/${teamId}`).get();
-    if (!team.exists) throw new HttpsError('not-found', 'Team not found.');
-    teamName = team.data().name;
-  }
+  if (!teamId) throw new HttpsError('invalid-argument', 'Team is required.');
+  const role = request.data?.role == null ? null : request.data.role === 'admin' ? 'admin' : 'member';
+  const team = await db().doc(`teams/${teamId}`).get();
+  if (!team.exists) throw new HttpsError('not-found', 'Team not found.');
+  const teamName = team.data().name;
+
   const userRef = db().doc(`users/${employeeUid(employeeId)}`);
-  const snap = await userRef.get();
-  if (snap.exists) {
-    await userRef.update({ teamId, role: teamId ? role : 'member' });
-  } else {
-    // Profile created ahead of the first login so the employee can be assigned tasks right away.
-    await userRef.set({
-      employeeId,
-      name: emp.name,
-      department: emp.department ?? '',
-      phone: null,
-      active: emp.active === true,
-      superAdmin: emp.superAdmin === true,
-      sessionVersion: 0,
-      role: teamId ? role : 'member',
-      teamId,
-      fcmToken: null,
-      createdAt: Date.now(),
-    });
-  }
+  await db().runTransaction(async tx => {
+    const snap = await tx.get(userRef);
+    const prev = snap.exists ? snap.data() : null;
+    const teamIds = new Set(prev?.teamIds ?? []);
+    const teamRoles = { ...(prev?.teamRoles ?? {}) };
+    if (role) {
+      teamIds.add(teamId);
+      teamRoles[teamId] = role;
+    } else {
+      teamIds.delete(teamId);
+      delete teamRoles[teamId];
+    }
+    const fields = { teamIds: [...teamIds], teamRoles };
+    if (prev) {
+      tx.update(userRef, fields);
+    } else {
+      tx.set(userRef, {
+        employeeId,
+        name: emp.name,
+        department: emp.department ?? '',
+        phone: null,
+        active: emp.active === true,
+        superAdmin: emp.superAdmin === true,
+        sessionVersion: 0,
+        ...fields,
+        fcmToken: null,
+        createdAt: Date.now(),
+      });
+    }
+  });
+
   await audit('team-access', {
     employeeId,
     name: emp.name,
     actorEmployeeId: actor.employeeId,
     actorName: actor.name,
-    details: teamId ? `${teamName} (${role})` : 'Removed from team',
+    details: role ? `${teamName} (${role === 'admin' ? 'team admin' : 'member'})` : `Removed from ${teamName}`,
   });
 });
 

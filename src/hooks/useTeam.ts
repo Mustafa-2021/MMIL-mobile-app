@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AppUser, Team } from '../types';
-import { getTeam, subscribeTeamMembers } from '../services/team';
+import { getTeam, subscribeAllTeams, subscribeTeamMembers } from '../services/team';
 
 export function useTeamMembers(teamId: string | null) {
   const [members, setMembers] = useState<AppUser[]>([]);
@@ -47,4 +47,17 @@ export function useTeam(teamId: string | null) {
   }, [teamId]);
 
   return { team, loading };
+}
+
+/** The given teams (e.g. the signed-in employee's), A–Z. */
+export function useTeams(teamIds: string[]) {
+  const [all, setAll] = useState<Team[] | null>(null);
+  useEffect(() => subscribeAllTeams(setAll), []);
+  const key = teamIds.join(',');
+  const teams = useMemo(
+    () => (all ?? []).filter(t => teamIds.includes(t.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [all, key],
+  );
+  return { teams, loading: all === null };
 }

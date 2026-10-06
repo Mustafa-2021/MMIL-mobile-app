@@ -6,6 +6,7 @@ import HomeScreen from '../screens/HomeScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import { MemberTabParamList } from '../types';
 import ProfileHeaderButton from '../components/ProfileHeaderButton';
+import { HomeHeaderButton, TeamHeaderTitle } from '../components/TeamHeader';
 
 const Tab = createBottomTabNavigator<MemberTabParamList>();
 
@@ -15,6 +16,8 @@ export default function MemberTabNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.primary },
         headerTintColor: colors.white,
+        headerLeft: () => <HomeHeaderButton />,
+        headerTitle: ({ children }) => <TeamHeaderTitle title={children} />,
         headerRight: () => <ProfileHeaderButton />,
         tabBarActiveTintColor: colors.primary,
         tabBarStyle: { height: 60, paddingBottom: 8, paddingTop: 6 },

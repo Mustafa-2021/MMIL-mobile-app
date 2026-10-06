@@ -4,14 +4,13 @@ import type { ScrollViewInstance } from 'react-native';
 import {
   ActivityIndicator,
   Button,
-  Chip,
   Dialog,
   Menu,
   Portal,
   Text,
   TextInput,
 } from 'react-native-paper';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { useDatePicker } from '../components/DatePicker';
 import Toast from 'react-native-toast-message';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -49,6 +48,7 @@ const STATUSES: TaskStatus[] = ['To Do', 'In Progress', 'Done'];
 const PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low'];
 
 export default function TaskDetailScreen() {
+  const [openPicker, datePicker] = useDatePicker();
   const navigation = useNavigation<Nav>();
   const route = useRoute<TaskRoute>();
   const { taskId } = route.params;
@@ -171,17 +171,8 @@ export default function TaskDetailScreen() {
     await refreshAndSet({ dueDate: date.getTime() });
   };
 
-  // Opened imperatively: a mounted <DateTimePicker> on Android re-opens its dialog on every re-render.
-  const openDatePicker = (value: Date, onPick: (date: Date) => void, minimumDate?: Date) => {
-    DateTimePickerAndroid.open({
-      value,
-      mode: 'date',
-      minimumDate,
-      onChange: (event, date) => {
-        if (event.type === 'set' && date) onPick(date);
-      },
-    });
-  };
+  const openDatePicker = (value: Date, onPick: (date: Date) => void, minimumDate?: Date) =>
+    openPicker({ value, minimumDate, onPick });
 
   const handleOpenAttachment = async () => {
     if (!task?.attachment) return;
@@ -537,6 +528,7 @@ export default function TaskDetailScreen() {
           </Dialog.Actions>
         </Dialog>
       </Portal>
+      {datePicker}
     </ScrollView>
   );
 }

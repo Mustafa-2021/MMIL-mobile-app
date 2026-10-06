@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Menu, Text, TextInput } from 'react-native-paper';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { useDatePicker } from '../components/DatePicker';
 import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,6 +32,7 @@ const CATEGORIES: TaskCategory[] = [
 ];
 
 export default function CreateTaskScreen() {
+  const [openDatePicker, datePicker] = useDatePicker();
   const navigation = useNavigation<Nav>();
   const { profile } = useAuthContext();
   const { members } = useTeamMembers(profile?.teamId ?? null);
@@ -193,14 +194,7 @@ export default function CreateTaskScreen() {
         mode="outlined"
         icon="calendar"
         onPress={() =>
-          DateTimePickerAndroid.open({
-            value: dueDate,
-            mode: 'date',
-            minimumDate: new Date(),
-            onChange: (event, date) => {
-              if (event.type === 'set' && date) setDueDate(date);
-            },
-          })
+          openDatePicker({ value: dueDate, minimumDate: new Date(), onPick: setDueDate })
         }
         style={styles.selectButton}
         contentStyle={styles.selectButtonContent}>
@@ -238,6 +232,7 @@ export default function CreateTaskScreen() {
         contentStyle={styles.saveButtonContent}>
         Save Task
       </Button>
+      {datePicker}
     </ScrollView>
   );
 }

@@ -31,22 +31,14 @@ export default function EmployeeDetailScreen() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Team form, initialised from the employee's current access.
-  const [teamId, setTeamId] = useState<string | null>(null);
-  const [role, setRole] = useState<UserRole>('member');
+  // "Add to team" form.
+  const [newTeamId, setNewTeamId] = useState<string | null>(null);
+  const [newRole, setNewRole] = useState<UserRole>('member');
   const [teamMenuOpen, setTeamMenuOpen] = useState(false);
 
   useEffect(() => subscribeEmployee(employeeId, setEmployee), [employeeId]);
   useEffect(() => subscribeTeams(setTeams), []);
-  useEffect(
-    () =>
-      subscribeEmployeeProfile(employeeId, p => {
-        setAppProfile(p);
-        setTeamId(p?.teamId ?? null);
-        setRole(p?.role ?? 'member');
-      }),
-    [employeeId],
-  );
+  useEffect(() => subscribeEmployeeProfile(employeeId, setAppProfile), [employeeId]);
 
   if (employee === undefined) {
     return (
@@ -65,10 +57,10 @@ export default function EmployeeDetailScreen() {
 
   const isMe = me?.employeeId === employeeId;
   const locked = !!employee.lockedUntil && employee.lockedUntil > Date.now();
-  const currentTeamId = appProfile?.teamId ?? null;
-  const currentRole = appProfile?.role ?? 'member';
-  const teamChanged = teamId !== currentTeamId || (teamId != null && role !== currentRole);
-  const teamName = (id: string | null) => teams.find(t => t.id === id)?.name ?? 'No team';
+  const memberOf = appProfile?.teamIds ?? [];
+  const teamRoles = appProfile?.teamRoles ?? {};
+  const teamName = (id: string) => teams.find(t => t.id === id)?.name ?? '…';
+  const addableTeams = teams.filter(t => !memberOf.includes(t.id));
 
   const act = async (key: string, fn: () => Promise<unknown>, success: string) => {
     setBusy(key);
@@ -116,59 +108,103 @@ export default function EmployeeDetailScreen() {
 
       <Text style={styles.section}>Team access</Text>
       <View style={styles.card}>
-        <View style={styles.cardBody}>
-          <Menu
-            visible={teamMenuOpen}
-            onDismiss={() => setTeamMenuOpen(false)}
-            anchor={
+        {memberOf.length === 0 && (
+          <Text style={[styles.hint, styles.cardBody]}>Not in any team.</Text>
+        )}
+        {memberOf.map(id => (
+          <View key={id} style={styles.membership}>
+            <View style={styles.membershipHeader}>
+              <Text style={styles.membershipName}>{teamName(id)}</Text>
               <Button
-                mode="outlined"
-                icon="menu-down"
-                contentStyle={styles.menuButton}
-                onPress={() => setTeamMenuOpen(true)}>
-                {teamName(teamId)}
+                compact
+                textColor={colors.high}
+                disabled={!!busy}
+                loading={busy === `remove-${id}`}
+                onPress={() =>
+                  confirm(
+                    `Remove from ${teamName(id)}?`,
+                    `${employee.name} will no longer see this team's tasks.`,
+                    'Remove',
+                    () =>
+                      act(`remove-${id}`, () => setTeamAccess(employeeId, id, null), 'Removed from team'),
+                  )
+                }>
+                Remove
               </Button>
-            }>
-            <Menu.Item
-              title="No team"
-              onPress={() => {
-                setTeamId(null);
-                setTeamMenuOpen(false);
-              }}
-            />
-            {teams.map(t => (
-              <Menu.Item
-                key={t.id}
-                title={t.name}
-                onPress={() => {
-                  setTeamId(t.id);
-                  setTeamMenuOpen(false);
-                }}
-              />
-            ))}
-          </Menu>
-          {teams.length === 0 && (
-            <Text style={styles.hint}>No teams yet. Create one under Super Admin → Teams.</Text>
-          )}
-          {teamId && (
+            </View>
             <SegmentedButtons
-              style={styles.segment}
-              value={role}
-              onValueChange={v => setRole(v as UserRole)}
+              density="small"
+              value={teamRoles[id] ?? 'member'}
+              onValueChange={v =>
+                v !== teamRoles[id] &&
+                act(`role-${id}`, () => setTeamAccess(employeeId, id, v as UserRole), 'Role updated')
+              }
               buttons={[
-                { value: 'member', label: 'Member' },
-                { value: 'admin', label: 'Team admin' },
+                { value: 'member', label: 'Member', disabled: !!busy },
+                { value: 'admin', label: 'Team admin', disabled: !!busy },
               ]}
             />
+          </View>
+        ))}
+
+        <View style={styles.cardBody}>
+          <Text style={styles.addTitle}>Add to a team</Text>
+          {teams.length === 0 ? (
+            <Text style={styles.hint}>No teams yet. Create one under Super Admin → Teams.</Text>
+          ) : addableTeams.length === 0 ? (
+            <Text style={styles.hint}>Already in every team.</Text>
+          ) : (
+            <>
+              <Menu
+                visible={teamMenuOpen}
+                onDismiss={() => setTeamMenuOpen(false)}
+                anchor={
+                  <Button
+                    mode="outlined"
+                    icon="menu-down"
+                    contentStyle={styles.menuButton}
+                    onPress={() => setTeamMenuOpen(true)}>
+                    {newTeamId ? teamName(newTeamId) : 'Choose team'}
+                  </Button>
+                }>
+                {addableTeams.map(t => (
+                  <Menu.Item
+                    key={t.id}
+                    title={t.name}
+                    onPress={() => {
+                      setNewTeamId(t.id);
+                      setTeamMenuOpen(false);
+                    }}
+                  />
+                ))}
+              </Menu>
+              <SegmentedButtons
+                style={styles.segment}
+                value={newRole}
+                onValueChange={v => setNewRole(v as UserRole)}
+                buttons={[
+                  { value: 'member', label: 'Member' },
+                  { value: 'admin', label: 'Team admin' },
+                ]}
+              />
+              <Button
+                mode="contained"
+                style={styles.save}
+                disabled={!newTeamId || !!busy}
+                loading={busy === 'add'}
+                onPress={() =>
+                  newTeamId &&
+                  act('add', () => setTeamAccess(employeeId, newTeamId, newRole), 'Added to team').then(
+                    () => {
+                      setNewTeamId(null);
+                      setNewRole('member');
+                    },
+                  )
+                }>
+                Add to team
+              </Button>
+            </>
           )}
-          <Button
-            mode="contained"
-            style={styles.save}
-            disabled={!teamChanged || !!busy}
-            loading={busy === 'team'}
-            onPress={() => act('team', () => setTeamAccess(employeeId, teamId, role), 'Team access saved')}>
-            Save team access
-          </Button>
         </View>
       </View>
 
@@ -328,6 +364,27 @@ const styles = StyleSheet.create({
   section: {
     fontWeight: '700',
     fontSize: 16,
+    color: colors.text,
+    marginBottom: 8,
+  },
+  membership: {
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  membershipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  membershipName: {
+    fontWeight: '700',
+    fontSize: 16,
+    color: colors.text,
+  },
+  addTitle: {
+    fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
   },

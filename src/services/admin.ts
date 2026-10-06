@@ -11,7 +11,7 @@ import {
   query,
   startAt,
 } from '@react-native-firebase/firestore';
-import { AppUser, AuditEntry, Employee, EmployeeImportRow, ImportSummary, Team } from '../types';
+import { AppUser, AuditEntry, Employee, EmployeeImportRow, ImportSummary, UserRole } from '../types';
 import { callFunction } from './functions';
 
 // Super-admin operations. Every write goes through a Cloud Function (functions/employees.js),
@@ -57,15 +57,7 @@ export function subscribeEmployeeProfile(
   );
 }
 
-export function subscribeTeams(onChange: (teams: Team[]) => void) {
-  return onSnapshot(collection(getFirestore(), 'teams'), snap =>
-    onChange(
-      snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Omit<Team, 'id'>) }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    ),
-  );
-}
+export { subscribeAllTeams as subscribeTeams } from './team';
 
 export function subscribeAuditLog(onChange: (entries: AuditEntry[]) => void, max = 150) {
   return onSnapshot(
@@ -100,7 +92,8 @@ export const logoutEmployee = (employeeId: string) => callFunction('logoutEmploy
 export const setSuperAdmin = (employeeId: string, value: boolean) =>
   callFunction('setSuperAdmin', { employeeId, value });
 
-export const setTeamAccess = (employeeId: string, teamId: string | null, role: 'admin' | 'member') =>
+/** Adds the employee to a team or changes their role in it; role null removes them. */
+export const setTeamAccess = (employeeId: string, teamId: string, role: UserRole | null) =>
   callFunction('setTeamAccess', { employeeId, teamId, role });
 
 export const createTeam = (name: string) => callFunction<{ id: string }>('createTeam', { name });

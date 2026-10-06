@@ -8,6 +8,7 @@ import ReportsScreen from '../screens/ReportsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import { AdminTabParamList } from '../types';
 import ProfileHeaderButton from '../components/ProfileHeaderButton';
+import { HomeHeaderButton, TeamHeaderTitle } from '../components/TeamHeader';
 
 const Tab = createBottomTabNavigator<AdminTabParamList>();
 
@@ -17,6 +18,8 @@ export default function AdminTabNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.primary },
         headerTintColor: colors.white,
+        headerLeft: () => <HomeHeaderButton />,
+        headerTitle: ({ children }) => <TeamHeaderTitle title={children} />,
         headerRight: () => <ProfileHeaderButton />,
         tabBarActiveTintColor: colors.primary,
         tabBarStyle: { height: 60, paddingBottom: 8, paddingTop: 6 },

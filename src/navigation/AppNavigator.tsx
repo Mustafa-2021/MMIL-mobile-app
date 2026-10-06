@@ -4,6 +4,7 @@ import { ActivityIndicator } from 'react-native-paper';
 import {
   createNavigationContainerRef,
   NavigationContainer,
+  useNavigation,
 } from '@react-navigation/native';
 import notifee, { EventType } from '@notifee/react-native';
 import {
@@ -12,11 +13,16 @@ import {
   onMessage,
   onNotificationOpenedApp,
 } from '@react-native-firebase/messaging';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import {
+  createNativeStackNavigator,
+  NativeStackNavigationProp,
+} from '@react-navigation/native-stack';
 import { colors } from '../theme/theme';
 import { useAuthContext } from '../hooks/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
-import NoAccessScreen from '../screens/NoAccessScreen';
+import HubScreen from '../screens/HubScreen';
+import TeamPickerScreen from '../screens/TeamPickerScreen';
+import ComingSoonScreen from '../screens/ComingSoonScreen';
 import CreateTaskScreen from '../screens/CreateTaskScreen';
 import TaskDetailScreen from '../screens/TaskDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -38,13 +44,14 @@ import {
   setupNotificationChannel,
   syncFcmTokenOnRefresh,
 } from '../services/notifications';
+import { getTask } from '../services/tasks';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function AppNavigator() {
-  const { initializing, firebaseUser, profile } = useAuthContext();
+  const { initializing, firebaseUser, profile, setActiveTeamId } = useAuthContext();
   const [navReady, setNavReady] = useState(false);
   // Task to open once the user is signed in and the main screens are mounted.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
@@ -85,12 +92,21 @@ export default function AppNavigator() {
     return syncFcmTokenOnRefresh(profile.uid);
   }, [profile?.uid]);
 
+  // Opening a task from a notification: switch to the task's team first, since the task
+  // screens act on the open team.
+  const hasTeams = (profile?.teamIds.length ?? 0) > 0;
   useEffect(() => {
-    if (pendingTaskId && navReady && profile?.teamId && navigationRef.isReady()) {
-      navigationRef.navigate('TaskDetail', { taskId: pendingTaskId });
-      setPendingTaskId(null);
-    }
-  }, [pendingTaskId, navReady, profile?.teamId]);
+    if (!pendingTaskId || !navReady || !hasTeams || !navigationRef.isReady()) return;
+    const taskId = pendingTaskId;
+    setPendingTaskId(null);
+    getTask(taskId)
+      .then(task => {
+        if (!task) return;
+        setActiveTeamId(task.teamId);
+        navigationRef.navigate('TaskDetail', { taskId });
+      })
+      .catch(() => {});
+  }, [pendingTaskId, navReady, hasTeams, setActiveTeamId]);
 
   if (initializing) {
     return (
@@ -107,10 +123,29 @@ export default function AppNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
         ) : (
           <>
-            {profile.teamId ? (
+            <Stack.Screen
+              name="Hub"
+              component={HubScreen}
+              options={{ title: 'MMIL', headerRight: () => <ProfileHeaderButton /> }}
+            />
+            <Stack.Screen name="ComingSoon" component={ComingSoonScreen} />
+            {hasTeams && (
               <>
+                <Stack.Screen
+                  name="TeamPicker"
+                  component={TeamPickerScreen}
+                  options={{ title: 'Team' }}
+                />
                 <Stack.Screen name="Main" options={{ headerShown: false }}>
-                  {() => (profile.role === 'admin' ? <AdminTabNavigator /> : <MemberTabNavigator />)}
+                  {() =>
+                    !profile.teamId ? (
+                      <BackToHub />
+                    ) : profile.role === 'admin' ? (
+                      <AdminTabNavigator />
+                    ) : (
+                      <MemberTabNavigator />
+                    )
+                  }
                 </Stack.Screen>
                 <Stack.Screen
                   name="CreateTask"
@@ -123,12 +158,6 @@ export default function AppNavigator() {
                   options={{ title: 'Task Details' }}
                 />
               </>
-            ) : (
-              <Stack.Screen
-                name="NoAccess"
-                component={NoAccessScreen}
-                options={{ title: 'MMIL', headerRight: () => <ProfileHeaderButton /> }}
-              />
             )}
             <Stack.Screen
               name="Profile"
@@ -175,6 +204,15 @@ export default function AppNavigator() {
       </Stack.Navigator>
     </NavigationContainer>
   );
+}
+
+/** Main without an open team (e.g. just removed from it): go back to Home. */
+function BackToHub() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  useEffect(() => {
+    navigation.navigate('Hub');
+  }, [navigation]);
+  return null;
 }
 
 const styles = StyleSheet.create({

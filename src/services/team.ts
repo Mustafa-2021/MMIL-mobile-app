@@ -14,13 +14,26 @@ export function subscribeTeamMembers(
   onChange: (members: AppUser[]) => void,
 ) {
   return onSnapshot(
-    query(collection(getFirestore(), 'users'), where('teamId', '==', teamId)),
+    query(collection(getFirestore(), 'users'), where('teamIds', 'array-contains', teamId)),
     snap =>
       onChange(
-        snap.docs.map(
-          d => ({ uid: d.id, ...(d.data() as Omit<AppUser, 'uid'>) } as AppUser),
-        ),
+        snap.docs.map(d => {
+          const u = { uid: d.id, ...(d.data() as Omit<AppUser, 'uid'>) } as AppUser;
+          // teamId / role describe membership of *this* team, like the signed-in profile.
+          return { ...u, teamId, role: u.teamRoles?.[teamId] ?? 'member' };
+        }),
       ),
+  );
+}
+
+/** All teams, A–Z (a handful of documents). */
+export function subscribeAllTeams(onChange: (teams: Team[]) => void) {
+  return onSnapshot(collection(getFirestore(), 'teams'), snap =>
+    onChange(
+      snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Omit<Team, 'id'>) }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ),
   );
 }
 

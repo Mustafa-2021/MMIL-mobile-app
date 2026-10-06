@@ -28,8 +28,15 @@ export interface AppUser {
   superAdmin: boolean;
   /** Bumped on every login and forced logout; a device holding an older value signs out. */
   sessionVersion: number;
-  role: UserRole;
+  /** Teams the employee belongs to (stored), with their role in each. */
+  teamIds: string[];
+  teamRoles: Record<string, UserRole>;
+  /**
+   * Derived on the client (not stored): the team currently open in the Team section and the
+   * employee's role in it. null / 'member' outside the Team section or with no team.
+   */
   teamId: string | null;
+  role: UserRole;
   fcmToken?: string | null;
   createdAt: number;
   lastLoginAt?: number;
@@ -141,8 +148,10 @@ export interface AppNotification {
 
 export type RootStackParamList = {
   Login: undefined;
+  Hub: undefined;
+  TeamPicker: undefined;
+  ComingSoon: { section: 'HR' | 'Visitor' };
   Main: undefined;
-  NoAccess: undefined;
   SuperAdmin: undefined;
   ImportEmployees: undefined;
   Employees: undefined;

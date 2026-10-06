@@ -5,6 +5,7 @@ rules_version = '2';
 // Users sign in as emp_{employeeId} (see functions/employees.js). Profiles, teams, employees
 // and roles are written only by Cloud Functions; the app writes tasks, comments, notifications
 // and its own FCM token. Team admin vs. member differences are still enforced in the UI.
+// Tasks and comments are visible to members of the task's team.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -25,8 +26,9 @@ service cloud.firestore {
       return isActive() && me().superAdmin == true;
     }
 
+    // Employees can be in several teams: users/{uid}.teamIds.
     function inMyTeam(teamId) {
-      return isActive() && me().teamId != null && me().teamId == teamId;
+      return isActive() && teamId in me().get('teamIds', []);
     }
 
     // Server-only: lookups, secrets (DOB), throttling.

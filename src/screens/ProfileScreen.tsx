@@ -1,27 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 import Toast from 'react-native-toast-message';
 import { colors } from '../theme/theme';
 import { useAuthContext } from '../hooks/AuthContext';
 import { signOutUser } from '../services/auth';
-import { getTeam } from '../services/team';
+import { useTeams } from '../hooks/useTeam';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, Team } from '../types';
+import { RootStackParamList } from '../types';
 import { formatDateTime } from '../utils/helpers';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { profile } = useAuthContext();
-  const [team, setTeam] = useState<Team | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
-  useEffect(() => {
-    if (profile?.teamId) {
-      getTeam(profile.teamId).then(setTeam).catch(() => setTeam(null));
-    }
-  }, [profile?.teamId]);
+  const { teams } = useTeams(profile?.teamIds ?? []);
 
   const handleLogout = () => {
     Alert.alert('Log out', 'Are you sure you want to log out?', [
@@ -61,13 +56,7 @@ export default function ProfileScreen() {
         <Text style={styles.name}>{profile.name}</Text>
         <View style={styles.roleChip}>
           <Text style={styles.roleText}>
-            {profile.superAdmin
-              ? 'Super Admin'
-              : !profile.teamId
-              ? 'Employee'
-              : profile.role === 'admin'
-              ? 'Admin'
-              : 'Member'}
+            {profile.superAdmin ? 'Super Admin' : 'Employee'}
           </Text>
         </View>
       </View>
@@ -76,7 +65,14 @@ export default function ProfileScreen() {
         <Row label="Employee ID" value={profile.employeeId} />
         <Row label="Department" value={profile.department || '—'} />
         <Row label="Phone" value={profile.phone || '—'} />
-        <Row label="Team" value={team?.name ?? '—'} />
+        <Row
+          label={teams.length > 1 ? 'Teams' : 'Team'}
+          value={
+            teams
+              .map(t => (profile.teamRoles[t.id] === 'admin' ? `${t.name} (admin)` : t.name))
+              .join(', ') || '—'
+          }
+        />
         <Row label="Member since" value={formatDateTime(profile.createdAt)} last />
       </View>
 
