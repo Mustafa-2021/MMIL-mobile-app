@@ -33,6 +33,7 @@ import EmployeeDetailScreen from '../screens/admin/EmployeeDetailScreen';
 import EmployeeFormScreen from '../screens/admin/EmployeeFormScreen';
 import TeamsScreen from '../screens/admin/TeamsScreen';
 import ActivityLogScreen from '../screens/admin/ActivityLogScreen';
+import NumberRequestsScreen from '../screens/admin/NumberRequestsScreen';
 import ProfileHeaderButton from '../components/ProfileHeaderButton';
 import AdminTabNavigator from './AdminTabNavigator';
 import MemberTabNavigator from './MemberTabNavigator';
@@ -199,6 +200,11 @@ export default function AppNavigator() {
                   name="ActivityLog"
                   component={ActivityLogScreen}
                   options={{ title: 'Activity Log' }}
+                />
+                <Stack.Screen
+                  name="NumberRequests"
+                  component={NumberRequestsScreen}
+                  options={{ title: 'Number Change Requests' }}
                 />
               </>
             )}

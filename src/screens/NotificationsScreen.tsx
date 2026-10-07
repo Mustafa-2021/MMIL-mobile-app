@@ -14,6 +14,7 @@ const typeIcon: Record<AppNotification['type'], string> = {
   status: '✅',
   extension: '📅',
   comment: '💬',
+  'number-change': '📱',
 };
 
 export default function NotificationsScreen() {

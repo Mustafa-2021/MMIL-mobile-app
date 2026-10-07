@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../../theme/theme';
 import { RootStackParamList } from '../../types';
+import { subscribePendingNumberRequests } from '../../services/admin';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -13,8 +14,14 @@ const ITEMS: {
   icon: string;
   title: string;
   description: string;
-  route: 'Employees' | 'EmployeeForm' | 'ImportEmployees' | 'Teams' | 'ActivityLog';
+  route: 'Employees' | 'EmployeeForm' | 'ImportEmployees' | 'Teams' | 'ActivityLog' | 'NumberRequests';
 }[] = [
+  {
+    icon: 'cellphone-key',
+    title: 'Number change requests',
+    description: 'Approve employees moving their login to a new mobile number',
+    route: 'NumberRequests',
+  },
   {
     icon: 'account-search-outline',
     title: 'Employees',
@@ -49,6 +56,8 @@ const ITEMS: {
 
 export default function SuperAdminScreen() {
   const navigation = useNavigation<Nav>();
+  const [pendingNumbers, setPendingNumbers] = useState(0);
+  useEffect(() => subscribePendingNumberRequests(r => setPendingNumbers(r.length)), []);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {ITEMS.map(item => (
@@ -61,7 +70,14 @@ export default function SuperAdminScreen() {
             <Icon name={item.icon} size={28} color={colors.primary} />
           </View>
           <View style={styles.text}>
-            <Text style={styles.title}>{item.title}</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>{item.title}</Text>
+              {item.route === 'NumberRequests' && pendingNumbers > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{pendingNumbers}</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.description}>{item.description}</Text>
           </View>
           <Icon name="chevron-right" size={24} color={colors.textMuted} />
@@ -100,6 +116,25 @@ const styles = StyleSheet.create({
   },
   text: {
     flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  badge: {
+    marginLeft: 8,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: colors.high,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
   },
   title: {
     fontWeight: '700',

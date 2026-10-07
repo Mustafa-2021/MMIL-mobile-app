@@ -10,6 +10,7 @@ import {
   logoutEmployee,
   setEmployeeActive,
   setAdmin,
+  resetEmployeePhone,
   addTeamMember,
   removeTeamMember,
   subscribeEmployee,
@@ -92,7 +93,7 @@ export default function EmployeeDetailScreen() {
       </View>
 
       <View style={styles.card}>
-        <Row label="Mobile" value={employee.phone ?? 'Not logged in yet'} />
+        <Row label="Registered mobile" value={employee.phone ?? 'Not registered yet'} />
         <Row label="Last login" value={employee.lastLoginAt ? formatDateTime(employee.lastLoginAt) : '—'} />
         <Row
           label="Role"
@@ -209,6 +210,24 @@ export default function EmployeeDetailScreen() {
             )
           }>
           Log out from phone
+        </Button>
+      )}
+      {!!employee.phone && (
+        <Button
+          mode="outlined"
+          icon="cellphone-erase"
+          style={styles.action}
+          loading={busy === 'reset-phone'}
+          disabled={!!busy || isMe}
+          onPress={() =>
+            confirm(
+              'Reset registered mobile?',
+              `${employee.phone} will be removed and ${employee.name} logged out. The next login with their employee ID and date of birth registers a new number. Use this if someone else registered this employee's account.`,
+              'Reset',
+              () => act('reset-phone', () => resetEmployeePhone(employeeId), 'Registered mobile reset'),
+            )
+          }>
+          Reset registered mobile
         </Button>
       )}
       {!employee.superAdmin && (

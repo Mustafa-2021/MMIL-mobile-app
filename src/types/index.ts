@@ -75,6 +75,18 @@ export interface AuditEntry {
   createdAt: number;
 }
 
+/** numberChangeRequests/{employeeId}: an employee asking to log in with a new mobile number. */
+export interface NumberChangeRequest {
+  employeeId: string;
+  name: string;
+  department: string;
+  oldPhone: string;
+  newPhone: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: number;
+  decidedAt?: number;
+}
+
 /** One row read from the HR sheet, ready to send to importEmployees. */
 export interface EmployeeImportRow {
   employeeId: string;
@@ -142,7 +154,7 @@ export interface AppNotification {
   userId: string;
   title: string;
   body: string;
-  type: 'assigned' | 'overdue' | 'reminder' | 'status' | 'extension' | 'comment';
+  type: 'assigned' | 'overdue' | 'reminder' | 'status' | 'extension' | 'comment' | 'number-change';
   taskId?: string;
   read: boolean;
   createdAt: number;
@@ -161,6 +173,7 @@ export type RootStackParamList = {
   EmployeeForm: { employeeId?: string } | undefined;
   Teams: undefined;
   ActivityLog: undefined;
+  NumberRequests: undefined;
   CreateTask: { taskId?: string } | undefined;
   TaskDetail: { taskId: string };
   Profile: undefined;

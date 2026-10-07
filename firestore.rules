@@ -49,6 +49,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Mobile number change requests, decided by the super admin (functions only write).
+    match /numberChangeRequests/{employeeId} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
     match /teams/{teamId} {
       allow read: if isActive();
       allow write: if false;

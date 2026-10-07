@@ -13,7 +13,14 @@ const PLATFORM_ERRORS: Record<string, string> = {
   internal: 'Something went wrong on the server. Please try again.',
 };
 
-/** Calls a callable Cloud Function and returns its data; errors carry a readable message. */
+/** Error from a callable: readable message, plus the server's code and optional details. */
+export class FunctionError extends Error {
+  constructor(message: string, readonly code: string, readonly details?: any) {
+    super(message);
+  }
+}
+
+/** Calls a callable Cloud Function and returns its data; errors are FunctionErrors. */
 export async function callFunction<T = void>(name: string, data: object = {}): Promise<T> {
   try {
     const result = await httpsCallable(getFunctions(getApp(), REGION), name)(data);
@@ -22,7 +29,7 @@ export async function callFunction<T = void>(name: string, data: object = {}): P
     const code = String(e?.code ?? '').replace(/^functions\//, '');
     const message: string = e?.message ?? '';
     const isRawCode = !message || /^[A-Z_]+$/.test(message) || message.toLowerCase() === code;
-    if (PLATFORM_ERRORS[code] && isRawCode) throw new Error(PLATFORM_ERRORS[code]);
-    throw new Error(message || 'Something went wrong. Please try again.');
+    if (PLATFORM_ERRORS[code] && isRawCode) throw new FunctionError(PLATFORM_ERRORS[code], code);
+    throw new FunctionError(message || 'Something went wrong. Please try again.', code, e?.details);
   }
 }

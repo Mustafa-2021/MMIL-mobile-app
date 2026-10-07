@@ -59,7 +59,11 @@ function clientIp(request) {
 async function audit(type, fields) {
   await db()
     .collection('auditLog')
-    .add({ type, ...fields, createdAt: Date.now() })
+    .add({
+      type,
+      ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined)),
+      createdAt: Date.now(),
+    })
     .catch(e => logger.error('audit write failed', e));
 }
 
@@ -149,20 +153,71 @@ async function checkCredentials(request, rawId, rawDob) {
   }
 }
 
-/** Step 1 of login, before the OTP is sent: no auth needed. */
-exports.verifyEmployee = onCall(async request => {
-  const { emp } = await checkCredentials(request, request.data?.employeeId, request.data?.dob);
-  return { name: emp.name };
-});
+/** "+919876543210" → "******3210". */
+function maskPhone(phone) {
+  return phone ? `******${String(phone).slice(-4)}` : null;
+}
 
-/** Step 3 of login: called while signed in with the phone number just verified by OTP. */
-exports.linkEmployee = onCall(async request => {
+function normalizePhone(value) {
+  const p = String(value ?? '').replace(/[^\d+]/g, '');
+  return /^\+[1-9]\d{7,14}$/.test(p) ? p : null;
+}
+
+/**
+ * Each employee's account is locked to the mobile number of their first login. A different
+ * number can't log in; it can only request a change, which the super admin approves.
+ */
+function wrongNumberError(emp) {
+  return new HttpsError(
+    'failed-precondition',
+    `This employee ID is registered to mobile number ${maskPhone(emp.phone)}. Log in with that number, or request a number change.`,
+    { reason: 'phone-mismatch', maskedPhone: maskPhone(emp.phone) },
+  );
+}
+
+/** The phone-number account only proves the number; the app runs as emp_{id}. */
+async function deletePhoneUser(auth) {
+  await getAuth()
+    .deleteUser(auth.uid)
+    .catch(e => logger.warn('could not delete phone user', e));
+}
+
+function requirePhoneAuth(request) {
   const auth = request.auth;
   const phone = auth?.token?.phone_number;
   if (!auth || auth.token.firebase?.sign_in_provider !== 'phone' || !phone) {
     throw new HttpsError('unauthenticated', 'Verify your mobile number first.');
   }
+  return { auth, phone };
+}
+
+/**
+ * Step 1 of login (ID + DOB), and again with { phone } before the OTP is sent, so a number
+ * that isn't the registered one is stopped without sending an SMS. No auth needed.
+ */
+exports.verifyEmployee = onCall(async request => {
   const { employeeId, emp } = await checkCredentials(request, request.data?.employeeId, request.data?.dob);
+  const phone = request.data?.phone ? normalizePhone(request.data.phone) : null;
+  if (request.data?.phone && !phone) {
+    throw new HttpsError('invalid-argument', 'Enter a valid mobile number.');
+  }
+  if (phone && emp.phone && emp.phone !== phone) {
+    await audit('wrong-number-attempt', { employeeId, name: emp.name, phone });
+    throw wrongNumberError(emp);
+  }
+  return { name: emp.name, maskedPhone: maskPhone(emp.phone) };
+});
+
+/** Step 3 of login: called while signed in with the phone number just verified by OTP. */
+exports.linkEmployee = onCall(async request => {
+  const { auth, phone } = requirePhoneAuth(request);
+  const { employeeId, emp } = await checkCredentials(request, request.data?.employeeId, request.data?.dob);
+  if (emp.phone && emp.phone !== phone) {
+    await deletePhoneUser(auth);
+    await audit('wrong-number-attempt', { employeeId, name: emp.name, phone });
+    throw wrongNumberError(emp);
+  }
+  const firstLogin = !emp.phone;
   const uid = employeeUid(employeeId);
   const authAdmin = getAuth();
 
@@ -208,18 +263,57 @@ exports.linkEmployee = onCall(async request => {
     return next;
   });
 
-  const numberChanged = !!emp.phone && emp.phone !== phone;
-  await audit(numberChanged ? 'number-change' : 'login', {
+  await audit(firstLogin ? 'first-login' : 'login', { employeeId, name: emp.name, phone });
+
+  const token = await authAdmin.createCustomToken(uid, { employeeId });
+  await deletePhoneUser(auth);
+  return { token, sessionVersion };
+});
+
+/**
+ * Number change: the employee proves ID + DOB and the new number (OTP), and a request goes to
+ * the super admin. It does not log them in. One pending request per employee (the latest wins).
+ */
+exports.requestNumberChange = onCall(async request => {
+  const { auth, phone } = requirePhoneAuth(request);
+  const { employeeId, emp } = await checkCredentials(request, request.data?.employeeId, request.data?.dob);
+  await deletePhoneUser(auth);
+  if (!emp.phone || emp.phone === phone) {
+    throw new HttpsError('failed-precondition', 'This number can already be used to log in.');
+  }
+  await db().doc(`numberChangeRequests/${employeeId}`).set({
+    employeeId,
+    name: emp.name,
+    department: emp.department ?? '',
+    oldPhone: emp.phone,
+    newPhone: phone,
+    status: 'pending',
+    requestedAt: Date.now(),
+  });
+  await audit('number-change-requested', {
     employeeId,
     name: emp.name,
     phone,
-    ...(numberChanged ? { previousPhone: emp.phone } : {}),
+    previousPhone: emp.phone,
   });
-
-  const token = await authAdmin.createCustomToken(uid, { employeeId });
-  // The phone-number account was only used to prove the number; the app runs as emp_{id}.
-  await authAdmin.deleteUser(auth.uid).catch(e => logger.warn('could not delete phone user', e));
-  return { token, sessionVersion };
+  // Tell the super admin(s); pushOnNotification sends it to their phones.
+  const admins = await db().collection('users').where('superAdmin', '==', true).get();
+  await Promise.all(
+    admins.docs.map(d =>
+      db()
+        .collection('notifications')
+        .add({
+          teamId: '',
+          userId: d.id,
+          title: 'Mobile number change request',
+          body: `${emp.name} (${employeeId}) wants to change to ${phone}`,
+          type: 'number-change',
+          read: false,
+          createdAt: Date.now(),
+        }),
+    ),
+  );
+  return { maskedPhone: maskPhone(phone) };
 });
 
 // ---------------------------------------------------------------------------------------
@@ -473,6 +567,59 @@ exports.logoutEmployee = onCall(async request => {
   await audit('forced-logout', {
     employeeId,
     name: emp.name,
+    actorEmployeeId: actor.employeeId,
+    actorName: actor.name,
+  });
+});
+
+/** Super admin: approve or reject a pending number change ({ employeeId, approve }). */
+exports.decideNumberChange = onCall(async request => {
+  const actor = await requireSuperAdmin(request);
+  const { employeeId, emp } = await getEmployeeOrThrow(request.data?.employeeId);
+  const approve = request.data?.approve === true;
+  const reqRef = db().doc(`numberChangeRequests/${employeeId}`);
+  const req = (await reqRef.get()).data();
+  if (!req || req.status !== 'pending') {
+    throw new HttpsError('failed-precondition', 'There is no pending request for this employee.');
+  }
+  const now = Date.now();
+  if (approve) {
+    await db().doc(`employees/${employeeId}`).update({ phone: req.newPhone, updatedAt: now });
+    // The old phone is logged out; the employee logs in again with the new number.
+    await forceLogout(employeeId);
+  }
+  await reqRef.update({
+    status: approve ? 'approved' : 'rejected',
+    decidedAt: now,
+    decidedBy: actor.employeeId,
+  });
+  await audit(approve ? 'number-change-approved' : 'number-change-rejected', {
+    employeeId,
+    name: emp.name,
+    phone: req.newPhone,
+    previousPhone: req.oldPhone,
+    actorEmployeeId: actor.employeeId,
+    actorName: actor.name,
+  });
+});
+
+/**
+ * Super admin: clear the registered number (e.g. someone else registered first). The next
+ * login with ID + DOB registers whichever number is used. Logs out the current phone.
+ */
+exports.resetEmployeePhone = onCall(async request => {
+  const actor = await requireSuperAdmin(request);
+  const { employeeId, emp } = await getEmployeeOrThrow(request.data?.employeeId);
+  await db().doc(`employees/${employeeId}`).update({ phone: null, updatedAt: Date.now() });
+  await forceLogout(employeeId);
+  await db()
+    .doc(`numberChangeRequests/${employeeId}`)
+    .delete()
+    .catch(() => {});
+  await audit('phone-reset', {
+    employeeId,
+    name: emp.name,
+    previousPhone: emp.phone ?? undefined,
     actorEmployeeId: actor.employeeId,
     actorName: actor.name,
   });

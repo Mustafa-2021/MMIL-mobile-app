@@ -9,7 +9,7 @@ import {
 } from '@react-native-firebase/auth';
 import { doc, getFirestore, onSnapshot } from '@react-native-firebase/firestore';
 import { AppUser } from '../types';
-import { callFunction } from './functions';
+import { callFunction, FunctionError } from './functions';
 import { clearFcmToken } from './notifications';
 
 // The session this phone was given at login; if the profile's sessionVersion moves past it,
@@ -21,10 +21,34 @@ export function isEmployeeUid(uid: string | undefined | null): boolean {
   return !!uid && uid.startsWith('emp_');
 }
 
-/** Step 1: check employee ID + date of birth (YYYY-MM-DD). Returns the employee's name. */
-export async function verifyEmployee(employeeId: string, dob: string): Promise<string> {
-  const { name } = await callFunction<{ name: string }>('verifyEmployee', { employeeId, dob });
-  return name;
+/**
+ * Checks employee ID + date of birth (YYYY-MM-DD). With `phone`, also checks the number may
+ * log in: each account is locked to the number of its first login, and a different number
+ * fails with details.reason 'phone-mismatch' (see isPhoneMismatch). maskedPhone is the
+ * registered number, e.g. "******3210", or null before the first login.
+ */
+export async function verifyEmployee(
+  employeeId: string,
+  dob: string,
+  phone?: string,
+): Promise<{ name: string; maskedPhone: string | null }> {
+  return callFunction('verifyEmployee', { employeeId, dob, ...(phone ? { phone } : {}) });
+}
+
+export function isPhoneMismatch(e: unknown): boolean {
+  return e instanceof FunctionError && e.details?.reason === 'phone-mismatch';
+}
+
+/**
+ * While signed in with a newly verified number: ask the super admin to move the account to
+ * it. Does not log in; signs the temporary phone session out either way.
+ */
+export async function requestNumberChange(employeeId: string, dob: string): Promise<void> {
+  try {
+    await callFunction('requestNumberChange', { employeeId, dob });
+  } finally {
+    await signOut(getAuth()).catch(() => {});
+  }
 }
 
 export async function sendOtp(phoneNumber: string): Promise<ConfirmationResult> {

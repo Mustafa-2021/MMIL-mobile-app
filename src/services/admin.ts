@@ -10,8 +10,16 @@ import {
   orderBy,
   query,
   startAt,
+  where,
 } from '@react-native-firebase/firestore';
-import { AppUser, AuditEntry, Employee, EmployeeImportRow, ImportSummary } from '../types';
+import {
+  AppUser,
+  AuditEntry,
+  Employee,
+  EmployeeImportRow,
+  ImportSummary,
+  NumberChangeRequest,
+} from '../types';
 import { callFunction } from './functions';
 
 // Super-admin operations. Every write goes through a Cloud Function (functions/employees.js),
@@ -88,6 +96,24 @@ export const setEmployeeActive = (employeeId: string, active: boolean) =>
 export const unlockEmployee = (employeeId: string) => callFunction('unlockEmployee', { employeeId });
 
 export const logoutEmployee = (employeeId: string) => callFunction('logoutEmployee', { employeeId });
+
+/** Pending mobile number change requests, newest first. */
+export function subscribePendingNumberRequests(onChange: (requests: NumberChangeRequest[]) => void) {
+  return onSnapshot(
+    query(collection(getFirestore(), 'numberChangeRequests'), where('status', '==', 'pending')),
+    snap =>
+      onChange(
+        snap.docs.map(d => d.data() as NumberChangeRequest).sort((a, b) => b.requestedAt - a.requestedAt),
+      ),
+  );
+}
+
+export const decideNumberChange = (employeeId: string, approve: boolean) =>
+  callFunction('decideNumberChange', { employeeId, approve });
+
+/** Clears the registered number; the next login with ID + DOB registers a new one. */
+export const resetEmployeePhone = (employeeId: string) =>
+  callFunction('resetEmployeePhone', { employeeId });
 
 export const setAdmin = (employeeId: string, value: boolean) =>
   callFunction('setAdmin', { employeeId, value });

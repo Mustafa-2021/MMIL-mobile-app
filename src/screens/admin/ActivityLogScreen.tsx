@@ -9,6 +9,36 @@ import { formatDateTime } from '../../utils/helpers';
 
 const LABELS: Record<string, { icon: string; color: string; text: (e: AuditEntry) => string }> = {
   login: { icon: 'login', color: colors.low, text: () => 'Logged in' },
+  'first-login': {
+    icon: 'account-key-outline',
+    color: colors.low,
+    text: e => `First login, registered mobile ${e.phone ?? ''}`,
+  },
+  'wrong-number-attempt': {
+    icon: 'cellphone-off',
+    color: colors.high,
+    text: e => `Login attempt from unregistered number ${e.phone ?? ''}`,
+  },
+  'number-change-requested': {
+    icon: 'cellphone-key',
+    color: colors.medium,
+    text: e => `Requested number change ${e.previousPhone ?? ''} → ${e.phone ?? ''}`,
+  },
+  'number-change-approved': {
+    icon: 'cellphone-check',
+    color: colors.low,
+    text: e => `Number change approved → ${e.phone ?? ''}`,
+  },
+  'number-change-rejected': {
+    icon: 'cellphone-remove',
+    color: colors.high,
+    text: e => `Number change rejected (${e.phone ?? ''})`,
+  },
+  'phone-reset': {
+    icon: 'cellphone-erase',
+    color: colors.medium,
+    text: e => `Registered mobile reset${e.previousPhone ? ` (was ${e.previousPhone})` : ''}`,
+  },
   'number-change': {
     icon: 'cellphone-arrow-down',
     color: colors.medium,

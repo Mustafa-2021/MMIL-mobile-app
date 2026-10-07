@@ -16,16 +16,23 @@ import {
   completeEmployeeLogin,
   confirmOtp,
   isEmployeeUid,
+  isPhoneMismatch,
+  requestNumberChange,
   sendOtp,
   verifyEmployee,
 } from '../services/auth';
 import { dobInputToIso, isValidPhone, maskDobInput, toE164 } from '../utils/helpers';
 
-type Stage = 'employee' | 'phone' | 'otp';
+type Stage = 'employee' | 'phone' | 'otp' | 'requested';
+/** 'login' normally; 'change' when asking the super admin to move the account to a new number. */
+type Mode = 'login' | 'change';
 
 /**
  * Employee login: (1) employee ID + date of birth, checked against the HR list;
  * (2) mobile number + OTP; (3) the verified number is linked to the employee account.
+ * The account is locked to the number of its first login. Another number is stopped before
+ * the OTP is sent and can instead request a number change (OTP-verified), which the super
+ * admin approves.
  */
 export default function LoginScreen() {
   const [stage, setStage] = useState<Stage>('employee');
@@ -33,6 +40,10 @@ export default function LoginScreen() {
   const [dobText, setDobText] = useState('');
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [employeeName, setEmployeeName] = useState('');
+  const [maskedPhone, setMaskedPhone] = useState<string | null>(null);
+  const [phoneMismatch, setPhoneMismatch] = useState(false);
+  const [mode, setMode] = useState<Mode>('login');
+  const modeRef = useRef<Mode>('login');
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,22 +55,46 @@ export default function LoginScreen() {
 
   const dob = dobInputToIso(dobText);
 
+  const switchMode = (next: Mode) => {
+    modeRef.current = next;
+    setMode(next);
+  };
+
   const resetToStart = (message?: string) => {
     setStage('employee');
     setOtp('');
+    setPhoneMismatch(false);
+    switchMode('login');
     confirmationRef.current = null;
-    if (message) setError(message);
+    setError(message ?? '');
   };
 
-  const linkAccount = async () => {
+  // After the OTP: log in, or (change mode) send the number change request.
+  const finishOtp = async () => {
     if (linkingRef.current) return;
     linkingRef.current = true;
     setLoading(true);
+    const { employeeId: id, dob: iso } = credsRef.current;
     try {
-      // On success the auth listener in useAuth takes over and opens the app.
-      await completeEmployeeLogin(credsRef.current.employeeId, credsRef.current.dob);
+      if (modeRef.current === 'change') {
+        await requestNumberChange(id, iso);
+        confirmationRef.current = null;
+        setStage('requested');
+        setLoading(false);
+      } else {
+        // On success the auth listener in useAuth takes over and opens the app.
+        await completeEmployeeLogin(id, iso);
+      }
     } catch (e: any) {
-      resetToStart(e?.message);
+      confirmationRef.current = null;
+      if (isPhoneMismatch(e)) {
+        setStage('phone');
+        setOtp('');
+        setPhoneMismatch(true);
+        setError(e.message);
+      } else {
+        resetToStart(e?.message);
+      }
       setLoading(false);
     } finally {
       linkingRef.current = false;
@@ -69,7 +104,7 @@ export default function LoginScreen() {
   // Android can verify the SMS by itself and sign in without the OTP being typed.
   useEffect(() => {
     return onAuthStateChanged(getAuth(), user => {
-      if (user && !isEmployeeUid(user.uid) && confirmationRef.current) linkAccount();
+      if (user && !isEmployeeUid(user.uid) && confirmationRef.current) finishOtp();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -81,9 +116,11 @@ export default function LoginScreen() {
     if (!dob) return setError('Enter your date of birth as DD/MM/YYYY.');
     setLoading(true);
     try {
-      const name = await verifyEmployee(id, dob);
+      const result = await verifyEmployee(id, dob);
       credsRef.current = { employeeId: id, dob };
-      setEmployeeName(name);
+      setEmployeeName(result.name);
+      setMaskedPhone(result.maskedPhone);
+      setPhoneMismatch(false);
       setStage('phone');
     } catch (e: any) {
       setError(e?.message);
@@ -92,12 +129,24 @@ export default function LoginScreen() {
     }
   };
 
-  const handleSendOtp = async () => {
+  const handleSendOtp = async (nextMode: Mode = 'login') => {
     setError('');
     const fullPhone = toE164(phone);
     if (!isValidPhone(fullPhone)) return setError('Enter a valid 10-digit mobile number.');
     setLoading(true);
+    switchMode(nextMode);
     try {
+      if (nextMode === 'login') {
+        // Stop a number that isn't the registered one before an SMS is sent.
+        try {
+          await verifyEmployee(credsRef.current.employeeId, credsRef.current.dob, fullPhone);
+        } catch (e: any) {
+          if (isPhoneMismatch(e)) setPhoneMismatch(true);
+          setError(e?.message);
+          return;
+        }
+      }
+      setPhoneMismatch(false);
       confirmationRef.current = await sendOtp(fullPhone);
       setStage('otp');
       Toast.show({ type: 'success', text1: 'OTP sent' });
@@ -115,7 +164,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await confirmOtp(confirmationRef.current, otp);
-      await linkAccount();
+      await finishOtp();
     } catch {
       setError('Incorrect OTP. Please check and try again.');
       setLoading(false);
@@ -198,7 +247,9 @@ export default function LoginScreen() {
         {stage === 'phone' && (
           <>
             <Text variant="bodyMedium" style={styles.subtitle}>
-              Hi {employeeName}! Enter your mobile number to receive an OTP.
+              {maskedPhone
+                ? `Hi ${employeeName}! Enter your registered mobile number (${maskedPhone}) to receive an OTP.`
+                : `Hi ${employeeName}! Enter your mobile number to receive an OTP. This number will be registered to your account.`}
             </Text>
             <TextInput
               mode="outlined"
@@ -206,19 +257,40 @@ export default function LoginScreen() {
               placeholder="10-digit mobile number"
               keyboardType="phone-pad"
               value={phone}
-              onChangeText={setPhone}
+              onChangeText={t => {
+                setPhone(t);
+                setPhoneMismatch(false);
+              }}
               style={styles.input}
             />
             <ErrorText message={error} />
-            <Button
-              mode="contained"
-              onPress={handleSendOtp}
-              loading={loading}
-              disabled={loading}
-              style={styles.button}
-              contentStyle={styles.buttonContent}>
-              Send OTP
-            </Button>
+            {phoneMismatch ? (
+              <>
+                <Text style={styles.note}>
+                  Changed your mobile number? Verify this new number with an OTP and the admin
+                  will be asked to approve the change.
+                </Text>
+                <Button
+                  mode="contained"
+                  onPress={() => handleSendOtp('change')}
+                  loading={loading}
+                  disabled={loading}
+                  style={styles.button}
+                  contentStyle={styles.buttonContent}>
+                  Request number change
+                </Button>
+              </>
+            ) : (
+              <Button
+                mode="contained"
+                onPress={() => handleSendOtp('login')}
+                loading={loading}
+                disabled={loading}
+                style={styles.button}
+                contentStyle={styles.buttonContent}>
+                Send OTP
+              </Button>
+            )}
             <Button mode="text" onPress={() => resetToStart()} disabled={loading}>
               Back
             </Button>
@@ -249,7 +321,7 @@ export default function LoginScreen() {
               disabled={loading}
               style={styles.button}
               contentStyle={styles.buttonContent}>
-              Verify & Log in
+              {mode === 'change' ? 'Verify & send request' : 'Verify & Log in'}
             </Button>
             <Button
               mode="text"
@@ -261,6 +333,28 @@ export default function LoginScreen() {
               }}
               disabled={loading}>
               Change mobile number
+            </Button>
+          </>
+        )}
+
+        {stage === 'requested' && (
+          <>
+            <Text variant="titleMedium" style={styles.requestedTitle}>
+              Request sent
+            </Text>
+            <Text variant="bodyMedium" style={styles.subtitle}>
+              The admin has been asked to approve your new mobile number {toE164(phone)}. Once
+              approved, log in with your employee ID, date of birth and this number.
+            </Text>
+            <Button
+              mode="contained"
+              onPress={() => {
+                resetToStart();
+                setPhone('');
+              }}
+              style={styles.button}
+              contentStyle={styles.buttonContent}>
+              Back to login
             </Button>
           </>
         )}
@@ -308,6 +402,18 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 16,
+  },
+  note: {
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  requestedTitle: {
+    textAlign: 'center',
+    color: colors.low,
+    fontWeight: '700',
+    marginBottom: 8,
   },
   error: {
     fontSize: 14,
